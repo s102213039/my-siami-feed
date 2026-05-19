@@ -1,18 +1,34 @@
 import React from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, ExternalLink, MessageCircle } from 'lucide-react';
 
 interface PostCardProps {
     title: string;
     summary: string;
+    content?: string;
     type: 'news' | 'message';
     categoryName: string;
     categoryColor: string;
     createdAt: string;
     sourceUrl?: string;
+    commentCount?: number;
+    isExpanded: boolean;
+    onToggle: () => void;
+    children?: React.ReactNode;
 }
 
 export default function PostCard({
-    title, summary, type, categoryName, categoryColor, createdAt, sourceUrl
+    title,
+    summary,
+    content,
+    type,
+    categoryName,
+    categoryColor,
+    createdAt,
+    sourceUrl,
+    commentCount = 0,
+    isExpanded,
+    onToggle,
+    children,
 }: PostCardProps) {
     const typeLabel = type === 'news' ? '新聞' : '留言';
 
@@ -42,15 +58,41 @@ export default function PostCard({
                 {summary}
             </p>
 
-            {sourceUrl && (
-                <a
-                    href={sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-medium text-blue-500 hover:underline"
+            <div className="flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-blue-600"
                 >
-                    閱讀全文 →
-                </a>
+                    <MessageCircle size={14} />
+                    {isExpanded ? '收合討論' : `展開討論 (${commentCount})`}
+                </button>
+
+                {sourceUrl && (
+                    <a
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-500 hover:underline"
+                    >
+                        閱讀來源
+                        <ExternalLink size={12} />
+                    </a>
+                )}
+            </div>
+
+            {isExpanded && (
+                <div className="mt-5 border-t border-slate-100 pt-5">
+                    {content && (
+                        <div className="mb-5 rounded-xl bg-slate-50 p-4">
+                            <p className="text-xs font-semibold text-slate-500 mb-2">AI 整理重點</p>
+                            <p className="text-sm leading-7 text-slate-700 whitespace-pre-line">
+                                {content}
+                            </p>
+                        </div>
+                    )}
+                    {children}
+                </div>
             )}
         </div>
     );
