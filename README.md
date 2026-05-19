@@ -29,8 +29,9 @@ supabase db push
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY= # 選填；提供後 API 可在 RLS 較嚴格時寫入留言
-OPENAI_API_KEY= # 選填；未提供時會使用本機摘要式 AI 回覆
-OPENAI_MODEL=gpt-4o-mini
+AI_MODEL=openai/gpt-5.4 # 選填；搭配 Vercel AI Gateway 使用
+OPENAI_API_KEY= # 選填；未設定 AI Gateway 時可用 OpenAI API 生成回覆
+OPENAI_MODEL=gpt-5.4
 ```
 
 不要提交 `.env*` 檔案或任何憑證。

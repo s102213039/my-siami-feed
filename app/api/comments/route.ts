@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateLocalCommentReply } from '@/lib/ai/commentReply';
+import { fetchMarketQuote, generateCommentReply } from '@/lib/ai/commentReply';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import type { Comment, Post, SupabasePostRow } from '@/lib/types';
 
@@ -29,59 +29,12 @@ function formatPost(row: SupabasePostRow): Post {
 }
 
 async function generateReply(post: Post, comment: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const marketQuote = await fetchMarketQuote(comment).catch((error) => {
+    console.error('Market quote lookup failed:', error);
+    return undefined;
+  });
 
-  if (!apiKey) {
-    return generateLocalCommentReply({ post, comment });
-  }
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              '你是 Siami 的新聞討論助理。請用繁體中文根據文章與留言提供更詳細但精簡的回覆，不要編造文章沒有的事實。',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              article: {
-                title: post.title,
-                summary: post.summary,
-                content: post.content,
-                source_url: post.source_url,
-              },
-              comment,
-            }),
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 420,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI request failed: ${response.status}`);
-    }
-
-    const payload = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-
-    return payload.choices?.[0]?.message?.content?.trim()
-      || generateLocalCommentReply({ post, comment });
-  } catch (error) {
-    console.error('Failed to generate model reply:', error);
-    return generateLocalCommentReply({ post, comment });
-  }
+  return generateCommentReply({ post, comment, marketQuote });
 }
 
 export async function GET(request: Request) {
