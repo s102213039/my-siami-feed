@@ -174,7 +174,11 @@ async function generateWithOpenAI(input: ReplyInput) {
 }
 
 async function generateWithGateway(input: ReplyInput) {
-  if (!process.env.VERCEL && !process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
+  const gatewayEnabled = process.env.AI_GATEWAY_ENABLED === 'true'
+    || Boolean(process.env.AI_GATEWAY_API_KEY)
+    || Boolean(process.env.VERCEL_OIDC_TOKEN);
+
+  if (!gatewayEnabled) {
     return undefined;
   }
 
