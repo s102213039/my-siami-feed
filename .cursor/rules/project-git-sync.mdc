@@ -1,0 +1,15 @@
+---
+description: Require GitHub sync checks before work in this project
+alwaysApply: true
+---
+
+# Project Git Sync
+
+Before making changes in this repository, apply the `project-git-sync` skill.
+
+Required workflow:
+- Run `git fetch origin`, then verify `git status --short`, `git status -sb`, `git rev-parse HEAD`, and `git rev-parse @{u}`.
+- Only edit when the working tree is clean and local `HEAD` matches upstream.
+- If changes or divergence exist, inspect and report them before editing.
+- After each coherent task phase, validate, commit with a detailed message, and push before starting the next phase.
+- Never commit `.env*`, credentials, tokens, or generated build output.
