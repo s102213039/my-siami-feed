@@ -33,7 +33,7 @@ export default function PostCard({
     const typeLabel = type === 'news' ? '新聞' : '留言';
 
     return (
-        <div className="group relative bg-white border border-slate-100 p-6 rounded-2xl transition-all hover:shadow-sm hover:border-slate-200 mb-4">
+        <div className="group relative rounded-2xl border border-[#2a201c] bg-[#1b1715] p-6 shadow-[0_18px_60px_rgba(0,0,0,0.24)] transition-all hover:border-[#ff7447]/50 hover:bg-[#211b18] mb-4">
             <div className="flex items-center gap-2 mb-3">
                 <span
                     className="px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
@@ -41,20 +41,20 @@ export default function PostCard({
                 >
                     {categoryName}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500">
+                <span className="px-2 py-0.5 rounded-full bg-[#2b2420] text-[10px] font-medium text-[#ffb199]">
                     {typeLabel}
                 </span>
-                <span className="text-slate-400 text-xs flex items-center gap-1">
+                <span className="flex items-center gap-1 text-xs text-zinc-500">
                     <Clock size={12} />
                     {new Date(createdAt).toLocaleDateString()}
                 </span>
             </div>
 
-            <h3 className="text-xl font-semibold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">
+            <h3 className="mb-2 text-xl font-semibold text-zinc-50 transition-colors group-hover:text-[#ff7447]">
                 {title}
             </h3>
 
-            <p className="text-slate-600 text-sm leading-relaxed mb-4 line-clamp-2">
+            <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-zinc-400">
                 {summary}
             </p>
 
@@ -62,7 +62,7 @@ export default function PostCard({
                 <button
                     type="button"
                     onClick={onToggle}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-blue-600"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-[#ff7447]"
                 >
                     <MessageCircle size={14} />
                     {isExpanded ? '收合討論' : `展開討論 (${commentCount})`}
@@ -73,7 +73,7 @@ export default function PostCard({
                         href={sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-500 hover:underline"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-[#ff7447] hover:underline"
                     >
                         閱讀來源
                         <ExternalLink size={12} />
@@ -82,11 +82,11 @@ export default function PostCard({
             </div>
 
             {isExpanded && (
-                <div className="mt-5 border-t border-slate-100 pt-5">
+                <div className="mt-5 border-t border-[#2a201c] pt-5">
                     {content && (
-                        <div className="mb-5 rounded-xl bg-slate-50 p-4">
-                            <p className="text-xs font-semibold text-slate-500 mb-2">AI 整理重點</p>
-                            <p className="text-sm leading-7 text-slate-700 whitespace-pre-line">
+                        <div className="mb-5 rounded-xl border border-[#2a201c] bg-[#120f0e] p-4">
+                            <p className="mb-2 text-xs font-semibold text-[#ff7447]">AI 整理重點</p>
+                            <p className="whitespace-pre-line text-sm leading-7 text-zinc-300">
                                 {content}
                             </p>
                         </div>

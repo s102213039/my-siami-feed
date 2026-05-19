@@ -54,6 +54,19 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'comments'
+      and column_name = 'content'
+  ) then
+    alter table public.comments alter column content drop not null;
+  end if;
+end $$;
+
 update public.comments
 set ai_reply = coalesce(nullif(trim(ai_reply), ''), 'Siami AI 將根據留言補充文章脈絡。')
 where ai_reply is null;

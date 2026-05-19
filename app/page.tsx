@@ -262,19 +262,22 @@ export default function Home() {
   }, [fetchCategories, fetchPosts]);
 
   return (
-    <main className="min-h-screen bg-[#fafafa] py-10 px-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#080604] py-10 px-4 text-zinc-100 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         {/* 頁首 */}
         <header className="mb-10 text-center">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.32em] text-[#ff7447]">
+            AI 與人類共處的新聞聚落
+          </p>
+          <h1 className="text-4xl font-bold tracking-tight text-zinc-50">
             Siami Feed
           </h1>
-          <p className="mt-2 text-slate-500 text-sm">
+          <p className="mt-3 text-sm text-zinc-400">
             即時資訊推送與 AI 對話牆
           </p>
         </header>
 
-        <section className="mb-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+        <section className="mb-6 rounded-2xl border border-[#2a201c] bg-[#14100f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.25)]">
           <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
             <label className="sr-only" htmlFor="feed-search">搜尋新聞</label>
             <input
@@ -282,14 +285,14 @@ export default function Home() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="搜尋你想看的新聞、議題或關鍵字..."
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-[#332721] bg-[#0d0a09] px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-[#ff7447] focus:ring-2 focus:ring-[#ff7447]/20"
             />
             <label className="sr-only" htmlFor="category-filter">分類</label>
             <select
               id="category-filter"
               value={selectedCategory}
               onChange={(event) => setSelectedCategory(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-[#332721] bg-[#0d0a09] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-[#ff7447] focus:ring-2 focus:ring-[#ff7447]/20"
             >
               <option value="all">全部分類</option>
               {categories.map((category) => (
@@ -299,7 +302,7 @@ export default function Home() {
               ))}
             </select>
           </div>
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-zinc-500">
             目前會讀取 Supabase 中已收錄的新聞；新聞來源抓取由你的 Hermes agent 或後端流程寫入 `posts` 後，這裡會即時更新。
           </p>
         </section>
@@ -307,7 +310,7 @@ export default function Home() {
         {/* 內容區 */}
         {loading ? (
           <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#ff7447]"></div>
           </div>
         ) : filteredPosts.length > 0 ? (
           <div className="space-y-2">
@@ -336,7 +339,7 @@ export default function Home() {
               >
                 <div className="space-y-4">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 mb-3">
+                    <p className="mb-3 text-xs font-semibold text-zinc-500">
                       留言給 Siami AI，讓它根據這篇文章補充更細的脈絡。
                     </p>
                     <div className="grid gap-3">
@@ -346,7 +349,7 @@ export default function Home() {
                           updateCommentForm(post.id, { authorName: event.target.value })
                         }
                         placeholder="你的名稱（可留空匿名）"
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="rounded-xl border border-[#332721] bg-[#0d0a09] px-4 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#ff7447] focus:ring-2 focus:ring-[#ff7447]/20"
                       />
                       <textarea
                         value={form.body}
@@ -355,16 +358,16 @@ export default function Home() {
                         }
                         placeholder="例如：這件事後續可能影響什麼？有沒有更多背景？"
                         rows={3}
-                        className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="rounded-xl border border-[#332721] bg-[#0d0a09] px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#ff7447] focus:ring-2 focus:ring-[#ff7447]/20"
                       />
                       {form.error && (
-                        <p className="text-xs text-red-500">{form.error}</p>
+                        <p className="text-xs text-red-400">{form.error}</p>
                       )}
                       <button
                         type="button"
                         onClick={() => void handleSubmitComment(post)}
                         disabled={form.submitting}
-                        className="w-fit rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-fit rounded-full bg-[#ff7447] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#ff8b63] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {form.submitting ? 'AI 回覆生成中...' : '送出留言並取得 AI 回覆'}
                       </button>
@@ -373,32 +376,32 @@ export default function Home() {
 
                   <div className="space-y-3">
                     {commentLoadingByPost[post.id] ? (
-                      <p className="text-sm text-slate-400">讀取留言中...</p>
+                      <p className="text-sm text-zinc-500">讀取留言中...</p>
                     ) : comments.length > 0 ? (
                       comments.map((comment) => (
                         <article
                           key={comment.id}
-                          className="rounded-xl border border-slate-100 bg-white p-4"
+                          className="rounded-xl border border-[#2a201c] bg-[#120f0e] p-4"
                         >
                           <div className="mb-2 flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-700">
+                            <p className="text-sm font-semibold text-zinc-100">
                               {comment.author_name}
                             </p>
-                            <time className="text-xs text-slate-400">
+                            <time className="text-xs text-zinc-600">
                               {new Date(comment.created_at).toLocaleString()}
                             </time>
                           </div>
-                          <p className="text-sm leading-6 text-slate-600">{comment.body}</p>
-                          <div className="mt-3 rounded-lg bg-blue-50 p-3">
-                            <p className="mb-1 text-xs font-semibold text-blue-700">Siami AI 回覆</p>
-                            <p className="whitespace-pre-line text-sm leading-6 text-blue-950">
+                          <p className="text-sm leading-6 text-zinc-300">{comment.body}</p>
+                          <div className="mt-3 rounded-lg border border-[#ff7447]/20 bg-[#211713] p-3">
+                            <p className="mb-1 text-xs font-semibold text-[#ff7447]">Siami AI 回覆</p>
+                            <p className="whitespace-pre-line text-sm leading-6 text-zinc-100">
                               {comment.ai_reply}
                             </p>
                           </div>
                         </article>
                       ))
                     ) : (
-                      <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-400">
+                      <p className="rounded-xl border border-[#2a201c] bg-[#120f0e] p-4 text-sm text-zinc-500">
                         還沒有留言，成為第一個提問的人吧。
                       </p>
                     )}
@@ -409,7 +412,7 @@ export default function Home() {
             })}
           </div>
         ) : (
-          <div className="text-center py-20 text-slate-400">
+          <div className="py-20 text-center text-zinc-500">
             <p>目前沒有符合條件的內容，請換個關鍵字或分類。</p>
           </div>
         )}
