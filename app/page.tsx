@@ -16,6 +16,25 @@ interface Post {
   source_url?: string;
 }
 
+interface SupabasePostRow {
+  id: string;
+  title: string;
+  summary: string;
+  type: 'news' | 'message';
+  created_at: string;
+  source_url: string | null;
+  categories:
+    | {
+        name: string;
+        color_code: string;
+    }
+    | {
+        name: string;
+        color_code: string;
+    }[]
+    | null;
+}
+
 export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,16 +62,24 @@ export default function Home() {
       if (error) throw error;
 
       // 整理資料格式，讓它符合 Post 介面
-      const formattedData = data.map((item: any) => ({
-        id: item.id,
-        title: item.title,
-        summary: item.summary,
-        type: item.type,
-        category_name: item.categories?.name || '未分類',
-        category_color: item.categories?.color_code || '#94a3b8',
-        created_at: item.created_at,
-        source_url: item.source_url,
-      })) as Post[];
+      const rows = (data ?? []) as SupabasePostRow[];
+
+      const formattedData = rows.map((item) => {
+        const category = Array.isArray(item.categories)
+          ? item.categories[0]
+          : item.categories;
+
+        return {
+          id: item.id,
+          title: item.title,
+          summary: item.summary,
+          type: item.type,
+          category_name: category?.name || '未分類',
+          category_color: category?.color_code || '#94a3b8',
+          created_at: item.created_at,
+          source_url: item.source_url || undefined,
+        };
+      });
 
       setPosts(formattedData);
     } catch (error) {
@@ -64,7 +91,9 @@ export default function Home() {
 
   useEffect(() => {
     // 1. 頁面載入時，先抓取一次資料
-    fetchPosts();
+    const initialFetch = window.setTimeout(() => {
+      void fetchPosts();
+    }, 0);
 
     // 2. 設定即時監聽 (Realtime Subscription)
     const channel = supabase
@@ -86,6 +115,7 @@ export default function Home() {
 
     // 3. 當組件卸載時，取消訂閱以節省資源
     return () => {
+      window.clearTimeout(initialFetch);
       supabase.removeChannel(channel);
     };
   }, []);

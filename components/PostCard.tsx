@@ -1,11 +1,5 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-function cn(...inputs: ClassValue[]) {
-    return twMerge(clsx(inputs));
-}
 
 interface PostCardProps {
     title: string;
@@ -20,6 +14,8 @@ interface PostCardProps {
 export default function PostCard({
     title, summary, type, categoryName, categoryColor, createdAt, sourceUrl
 }: PostCardProps) {
+    const typeLabel = type === 'news' ? '新聞' : '留言';
+
     return (
         <div className="group relative bg-white border border-slate-100 p-6 rounded-2xl transition-all hover:shadow-sm hover:border-slate-200 mb-4">
             <div className="flex items-center gap-2 mb-3">
@@ -28,6 +24,9 @@ export default function PostCard({
                     style={{ backgroundColor: categoryColor }}
                 >
                     {categoryName}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500">
+                    {typeLabel}
                 </span>
                 <span className="text-slate-400 text-xs flex items-center gap-1">
                     <Clock size={12} />
