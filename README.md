@@ -29,10 +29,8 @@ supabase db push
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY= # 選填；提供後 API 可在 RLS 較嚴格時寫入留言
-AI_GATEWAY_ENABLED=true # 選填；啟用後才會呼叫 Vercel AI Gateway
-AI_MODEL=openai/gpt-5.4 # 選填；搭配 Vercel AI Gateway 使用
-OPENAI_API_KEY= # 選填；未設定 AI Gateway 時可用 OpenAI API 生成回覆
-OPENAI_MODEL=gpt-5.4
+GOOGLE_GENERATIVE_AI_API_KEY= # 選填；只使用 Google Gemini API，不使用 Vercel AI Gateway
+GEMINI_MODEL=gemini-2.5-flash # 選填；請使用 Google AI Studio 顯示在 Free tier 可用的模型
 ```
 
 不要提交 `.env*` 檔案或任何憑證。

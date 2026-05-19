@@ -1,5 +1,6 @@
 import type { Post } from '@/lib/types';
 import { generateText } from 'ai';
+import { google } from '@ai-sdk/google';
 
 interface ReplyInput {
   post: Pick<Post, 'title' | 'summary' | 'content' | 'source_url'>;
@@ -77,7 +78,7 @@ function buildNoAiConfiguredReply({ comment, marketQuote }: ReplyInput) {
   return [
     '你抓到問題了：目前站內尚未啟用真正的 AI 模型或通用網路搜尋服務，所以我不能假裝自己已經思考或搜尋。',
     `這次留言是：「${normalizeWhitespace(comment).slice(0, 120)}」`,
-    '若要讓 Siami AI 真正根據文章、留言與即時資料回答，需要在 Vercel 啟用 AI Gateway，或設定 `OPENAI_API_KEY`，並另外接入搜尋/行情資料來源。否則我只能根據文章已收錄內容做有限回覆。',
+    '若要讓 Siami AI 真正根據文章、留言與即時資料回答，需要設定 `GOOGLE_GENERATIVE_AI_API_KEY`，並另外接入搜尋/行情資料來源。否則我只能根據文章已收錄內容做有限回覆。',
   ].join('\n\n');
 }
 
@@ -135,55 +136,13 @@ export async function fetchMarketQuote(comment: string): Promise<MarketQuote | u
   };
 }
 
-async function generateWithOpenAI(input: ReplyInput) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return undefined;
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-5.4',
-      messages: [
-        {
-          role: 'system',
-          content: '你是 Siami 的新聞與資料助理。請根據使用者問題、文章內容與提供的即時資料回答，避免編造。',
-        },
-        {
-          role: 'user',
-          content: buildPrompt(input),
-        },
-      ],
-      temperature: 0.2,
-      max_tokens: 700,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenAI request failed: ${response.status}`);
-  }
-
-  const payload = await response.json() as {
-    choices?: { message?: { content?: string } }[];
-  };
-
-  return payload.choices?.[0]?.message?.content?.trim();
-}
-
-async function generateWithGateway(input: ReplyInput) {
-  const gatewayEnabled = process.env.AI_GATEWAY_ENABLED === 'true'
-    || Boolean(process.env.AI_GATEWAY_API_KEY)
-    || Boolean(process.env.VERCEL_OIDC_TOKEN);
-
-  if (!gatewayEnabled) {
+async function generateWithGemini(input: ReplyInput) {
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return undefined;
   }
 
   const result = await generateText({
-    model: process.env.AI_MODEL || 'openai/gpt-5.4',
+    model: google(process.env.GEMINI_MODEL || 'gemini-2.5-flash'),
     system: '你是 Siami 的新聞與資料助理。請根據使用者問題、文章內容與提供的即時資料回答，避免編造。',
     prompt: buildPrompt(input),
     temperature: 0.2,
@@ -193,19 +152,12 @@ async function generateWithGateway(input: ReplyInput) {
 }
 
 export async function generateCommentReply(input: ReplyInput) {
-  const openAiReply = await generateWithOpenAI(input).catch((error) => {
-    console.error('OpenAI reply generation failed:', error);
+  const geminiReply = await generateWithGemini(input).catch((error) => {
+    console.error('Gemini reply generation failed:', error);
     return undefined;
   });
 
-  if (openAiReply) return openAiReply;
-
-  const gatewayReply = await generateWithGateway(input).catch((error) => {
-    console.error('AI Gateway reply generation failed:', error);
-    return undefined;
-  });
-
-  if (gatewayReply) return gatewayReply;
+  if (geminiReply) return geminiReply;
 
   return buildNoAiConfiguredReply(input);
 }
