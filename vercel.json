@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/taiwan-stock-news",
+      "schedule": "55 0 * * *"
+    }
+  ]
+}
