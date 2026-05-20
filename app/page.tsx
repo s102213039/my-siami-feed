@@ -46,6 +46,7 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, Comment[]>>({});
+  const [commentCountsByPost, setCommentCountsByPost] = useState<Record<string, number>>({});
   const [commentLoadingByPost, setCommentLoadingByPost] = useState<Record<string, boolean>>({});
   const [commentForms, setCommentForms] = useState<Record<string, CommentFormState>>({});
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
@@ -101,6 +102,29 @@ export default function Home() {
     }
   }, []);
 
+  const fetchCommentCounts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('comments')
+      .select('post_id');
+
+    if (error) {
+      console.error('Error fetching comment counts:', error);
+      return;
+    }
+
+    const counts = (data ?? []).reduce<Record<string, number>>((current, row) => {
+      const postId = row.post_id as string | null;
+
+      if (postId) {
+        current[postId] = (current[postId] ?? 0) + 1;
+      }
+
+      return current;
+    }, {});
+
+    setCommentCountsByPost(counts);
+  }, []);
+
   const fetchComments = useCallback(async (postId: string) => {
     setCommentLoadingByPost((current) => ({ ...current, [postId]: true }));
 
@@ -118,6 +142,10 @@ export default function Home() {
       setCommentsByPost((current) => ({
         ...current,
         [postId]: payload.comments ?? [],
+      }));
+      setCommentCountsByPost((current) => ({
+        ...current,
+        [postId]: payload.comments?.length ?? 0,
       }));
     } catch (error) {
       console.error('Error fetching comments:', error);
@@ -219,6 +247,7 @@ export default function Home() {
     const initialFetch = window.setTimeout(() => {
       void fetchPosts();
       void fetchCategories();
+      void fetchCommentCounts();
     }, 0);
 
     // 2. 設定即時監聽 (Realtime Subscription)
@@ -246,9 +275,19 @@ export default function Home() {
         },
         (payload) => {
           const comment = payload.new as Comment;
-          setCommentsByPost((current) => ({
+          setCommentsByPost((current) => {
+            if (!(comment.post_id in current)) {
+              return current;
+            }
+
+            return {
+              ...current,
+              [comment.post_id]: mergeComments(current[comment.post_id] ?? [], comment),
+            };
+          });
+          setCommentCountsByPost((current) => ({
             ...current,
-            [comment.post_id]: mergeComments(current[comment.post_id] ?? [], comment),
+            [comment.post_id]: (current[comment.post_id] ?? 0) + 1,
           }));
         }
       )
@@ -259,7 +298,7 @@ export default function Home() {
       window.clearTimeout(initialFetch);
       supabase.removeChannel(channel);
     };
-  }, [fetchCategories, fetchPosts]);
+  }, [fetchCategories, fetchCommentCounts, fetchPosts]);
 
   return (
     <main className="min-h-screen bg-[#080604] py-10 px-4 text-zinc-100 sm:px-6 lg:px-8">
@@ -316,6 +355,9 @@ export default function Home() {
           <div className="space-y-2">
             {filteredPosts.map((post) => {
               const comments = commentsByPost[post.id] ?? [];
+              const commentCount = commentsByPost[post.id]?.length
+                ?? commentCountsByPost[post.id]
+                ?? 0;
               const form = commentForms[post.id] ?? {
                 authorName: '',
                 body: '',
@@ -333,7 +375,7 @@ export default function Home() {
                 categoryColor={post.category_color}
                 createdAt={post.created_at}
                 sourceUrl={post.source_url}
-                commentCount={comments.length}
+                commentCount={commentCount}
                 isExpanded={expandedPostId === post.id}
                 onToggle={() => handleTogglePost(post.id)}
               >
