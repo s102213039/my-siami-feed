@@ -35,7 +35,6 @@ type DigestResult = {
   dryRun: boolean;
   usedAi: boolean;
   hermesLegacyCandidates: number;
-  telegramNotified: boolean;
   warning?: string;
 };
 
@@ -94,14 +93,6 @@ function stripHtml(value: string) {
       .replace(/&nbsp;/g, ' ')
       .replace(/&#xD;/g, ' ')
   );
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function getString(value: unknown) {
@@ -203,41 +194,6 @@ async function collectCandidates() {
   return [...hermesLegacyItems, ...marketItems].slice(0, MAX_NEWS_ITEMS);
 }
 
-async function notifyTelegram(items: FeedItem[]) {
-  const token = process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  const hermesItems = items.filter((item) => item.isHermesLegacy).slice(0, 10);
-
-  if (!token || !chatId || hermesItems.length === 0) {
-    return false;
-  }
-
-  const message = [
-    '<b>今日金融/股市新聞摘要 (Top 10)</b>',
-    ...hermesItems.map((item, index) => {
-      return `${index + 1}. <a href="${escapeHtml(item.sourceUrl)}">${escapeHtml(item.title)}</a>`;
-    }),
-  ].join('\n\n');
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Telegram notification failed: ${response.status}`);
-  }
-
-  return true;
-}
-
 function buildFallbackPost(item: FeedItem): PreparedPost {
   const summary = item.rawContent.slice(0, 160) || item.title;
   const content = [
@@ -331,12 +287,6 @@ async function filterExisting(posts: PreparedPost[]) {
 
 export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestResult> {
   const candidates = await collectCandidates();
-  const telegramNotified = dryRun
-    ? false
-    : await notifyTelegram(candidates).catch((error) => {
-      console.error('Hermes legacy Telegram notification failed:', error);
-      return false;
-    });
   const aiPosts = await buildGeminiPosts(candidates).catch((error) => {
     console.error('Gemini news digest failed:', error);
     return undefined;
@@ -369,7 +319,6 @@ export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestRe
     dryRun,
     usedAi: Boolean(aiPosts),
     hermesLegacyCandidates: candidates.filter((item) => item.isHermesLegacy).length,
-    telegramNotified,
     warning: candidates.length < MIN_TARGET_ITEMS
       ? `目前來源只取得 ${candidates.length} 則候選新聞，低於目標 ${MIN_TARGET_ITEMS} 則。`
       : undefined,

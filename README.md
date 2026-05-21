@@ -35,8 +35,6 @@ GOOGLE_GENERATIVE_AI_API_KEY= # 選填；只使用 Google Gemini API，不使用
 GEMINI_MODEL=gemini-2.5-flash # 選填；請使用 Google AI Studio 顯示在 Free tier 可用的模型
 NEWS_DIGEST_USE_AI=false # 選填；設為 true 才會讓每日新聞抓取使用 Gemini 整理
 CRON_SECRET= # production 必填；用來保護每日新聞抓取端點
-TELEGRAM_BOT_TOKEN= # 選填；若要保留 Hermes 原本的 Telegram 通知，請設定此值
-TELEGRAM_CHAT_ID= # 選填；搭配 TELEGRAM_BOT_TOKEN 使用
 ```
 
 不要提交 `.env*` 檔案或任何憑證。
@@ -61,7 +59,7 @@ npm run build
 
 建議部署到 Vercel，並在 Vercel Project Environment Variables 設定 Supabase 相關變數。
 
-新聞 Cron 已移植 Hermes 原本的 Google News `finance` RSS 流程：每天會抓 Top 10 金融/股市新聞，寫入網站 feed；若設定 Telegram 環境變數，會同時送出「今日金融/股市新聞摘要 (Top 10)」。
+新聞 Cron 已移植 Hermes 原本的 Google News `finance` RSS 來源：每天會抓 Top 10 金融/股市新聞並寫入網站 feed。Telegram 通知仍交由 Hermes agent 原本流程處理，本站不需要設定 Telegram token。
 
 若 Hermes agent 要手動觸發同一套新聞整合流程，請讓它呼叫：
 
