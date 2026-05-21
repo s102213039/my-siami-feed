@@ -22,6 +22,16 @@ function getStatusLabel(status: StockQuote['status']) {
   return '狀態未知';
 }
 
+const ETF_SYMBOLS = new Set(['00403A.TW', '0050.TW']);
+
+function getCardTitle(quote: StockQuote) {
+  if (ETF_SYMBOLS.has(quote.symbol)) {
+    return quote.symbol.replace(/\.TW$/i, '');
+  }
+
+  return quote.displayName;
+}
+
 export default function StockTicker({ quotes, loading, error }: StockTickerProps) {
   return (
     <section className="mb-6 rounded-2xl border border-[#2a201c] bg-[#14100f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.25)]">
@@ -70,7 +80,7 @@ export default function StockTicker({ quotes, loading, error }: StockTickerProps
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-zinc-50">
-                      {quote.displayName}
+                      {getCardTitle(quote)}
                     </p>
                     <p className="mt-0.5 text-[11px] text-zinc-600">
                       {quote.symbol}
@@ -92,9 +102,6 @@ export default function StockTicker({ quotes, loading, error }: StockTickerProps
                     </p>
                     <p className={`mt-1 text-xs font-medium ${accentClass}`}>
                       {changePrefix}{formatNumber(quote.change)} / {changePrefix}{formatNumber(quote.changePercent)}%
-                    </p>
-                    <p className="mt-2 truncate text-[11px] text-zinc-600">
-                      {quote.updatedAt || '時間未知'}
                     </p>
                   </>
                 )}
