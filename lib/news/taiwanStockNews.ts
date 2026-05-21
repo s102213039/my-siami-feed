@@ -7,6 +7,8 @@ type FeedSource = {
   name: string;
   url: string;
   baseUrl?: string;
+  limit?: number;
+  isHermesLegacy?: boolean;
 };
 
 type FeedItem = {
@@ -16,6 +18,7 @@ type FeedItem = {
   rawContent: string;
   publishedAt?: string;
   score: number;
+  isHermesLegacy?: boolean;
 };
 
 type PreparedPost = {
@@ -31,6 +34,8 @@ type DigestResult = {
   candidates: number;
   dryRun: boolean;
   usedAi: boolean;
+  hermesLegacyCandidates: number;
+  telegramNotified: boolean;
   warning?: string;
 };
 
@@ -45,6 +50,12 @@ const parser = new XMLParser({
 
 const SOURCES: FeedSource[] = [
   {
+    name: 'Hermes Google News Finance',
+    url: 'https://news.google.com/rss/search?q=finance&hl=zh-TW&gl=TW&ceid=TW:zh-Hant',
+    limit: 10,
+    isHermesLegacy: true,
+  },
+  {
     name: 'TWSE 證交所新聞',
     url: 'https://www.twse.com.tw/rwd/zh/news/feed?type=rss',
     baseUrl: 'https://www.twse.com.tw',
@@ -56,7 +67,7 @@ const SOURCES: FeedSource[] = [
 ];
 
 const KEYWORD_WEIGHTS: Array<[RegExp, number]> = [
-  [/台股|臺股|加權指數|大盤/i, 5],
+  [/股票|股市|股價|台股|臺股|加權指數|大盤|finance/i, 5],
   [/台積電|臺積電|TSMC|半導體|晶片|先進製程/i, 5],
   [/國際股市|美股|那斯達克|道瓊|標普|費半|日股|港股/i, 4],
   [/總經|通膨|CPI|PCE|非農|央行|Fed|聯準會|利率|降息|升息/i, 4],
@@ -83,6 +94,14 @@ function stripHtml(value: string) {
       .replace(/&nbsp;/g, ' ')
       .replace(/&#xD;/g, ' ')
   );
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function getString(value: unknown) {
@@ -134,9 +153,12 @@ function parseFeed(xml: string, source: FeedSource): FeedItem[] {
         rawContent,
         publishedAt,
         score: scoreItem(title, rawContent),
+        isHermesLegacy: source.isHermesLegacy,
       };
     })
-    .filter((item) => item.title && item.sourceUrl && item.score > 0);
+    .filter((item) =>
+      item.title && item.sourceUrl && (item.isHermesLegacy || item.score > 0)
+    );
 }
 
 async function fetchFeed(source: FeedSource) {
@@ -152,7 +174,7 @@ async function fetchFeed(source: FeedSource) {
     throw new Error(`${source.name} RSS request failed: ${response.status}`);
   }
 
-  return parseFeed(await response.text(), source);
+  return parseFeed(await response.text(), source).slice(0, source.limit);
 }
 
 async function collectCandidates() {
@@ -165,15 +187,55 @@ async function collectCandidates() {
   });
   const seen = new Set<string>();
 
-  return items
-    .sort((a, b) => b.score - a.score)
-    .filter((item) => {
-      const key = item.sourceUrl || item.title;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, MAX_NEWS_ITEMS);
+  const deduped = items.filter((item) => {
+    const key = item.sourceUrl || item.title;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const hermesLegacyItems = deduped
+    .filter((item) => item.isHermesLegacy)
+    .slice(0, 10);
+  const marketItems = deduped
+    .filter((item) => !item.isHermesLegacy)
+    .sort((a, b) => b.score - a.score);
+
+  return [...hermesLegacyItems, ...marketItems].slice(0, MAX_NEWS_ITEMS);
+}
+
+async function notifyTelegram(items: FeedItem[]) {
+  const token = process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const hermesItems = items.filter((item) => item.isHermesLegacy).slice(0, 10);
+
+  if (!token || !chatId || hermesItems.length === 0) {
+    return false;
+  }
+
+  const message = [
+    '<b>今日金融/股市新聞摘要 (Top 10)</b>',
+    ...hermesItems.map((item, index) => {
+      return `${index + 1}. <a href="${escapeHtml(item.sourceUrl)}">${escapeHtml(item.title)}</a>`;
+    }),
+  ].join('\n\n');
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: message,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Telegram notification failed: ${response.status}`);
+  }
+
+  return true;
 }
 
 function buildFallbackPost(item: FeedItem): PreparedPost {
@@ -269,6 +331,12 @@ async function filterExisting(posts: PreparedPost[]) {
 
 export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestResult> {
   const candidates = await collectCandidates();
+  const telegramNotified = dryRun
+    ? false
+    : await notifyTelegram(candidates).catch((error) => {
+      console.error('Hermes legacy Telegram notification failed:', error);
+      return false;
+    });
   const aiPosts = await buildGeminiPosts(candidates).catch((error) => {
     console.error('Gemini news digest failed:', error);
     return undefined;
@@ -300,6 +368,8 @@ export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestRe
     candidates: candidates.length,
     dryRun,
     usedAi: Boolean(aiPosts),
+    hermesLegacyCandidates: candidates.filter((item) => item.isHermesLegacy).length,
+    telegramNotified,
     warning: candidates.length < MIN_TARGET_ITEMS
       ? `目前來源只取得 ${candidates.length} 則候選新聞，低於目標 ${MIN_TARGET_ITEMS} 則。`
       : undefined,
