@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import PostCard from '@/components/PostCard';
+import StockTicker from '@/components/StockTicker';
 import type { Category, Comment, Post, SupabasePostRow } from '@/lib/types';
+import type { StockQuote } from '@/lib/market/stockQuotes';
 
 interface CommentFormState {
   authorName: string;
@@ -53,6 +55,9 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [stockQuotes, setStockQuotes] = useState<StockQuote[]>([]);
+  const [stockQuotesLoading, setStockQuotesLoading] = useState(true);
+  const [stockQuotesError, setStockQuotesError] = useState<string | undefined>();
 
   // 函數：從 Supabase 抓取所有貼文 (包含分類資訊)
   const fetchPosts = useCallback(async () => {
@@ -99,6 +104,29 @@ export default function Home() {
 
     if (!error) {
       setCategories((data ?? []) as Category[]);
+    }
+  }, []);
+
+  const fetchStockQuotes = useCallback(async () => {
+    setStockQuotesLoading(true);
+    setStockQuotesError(undefined);
+
+    try {
+      const response = await fetch('/api/market-quotes');
+      const payload = await response.json() as {
+        quotes?: StockQuote[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || '股價讀取失敗');
+      }
+
+      setStockQuotes(payload.quotes ?? []);
+    } catch (error) {
+      setStockQuotesError(error instanceof Error ? error.message : '股價讀取失敗');
+    } finally {
+      setStockQuotesLoading(false);
     }
   }, []);
 
@@ -248,6 +276,7 @@ export default function Home() {
       void fetchPosts();
       void fetchCategories();
       void fetchCommentCounts();
+      void fetchStockQuotes();
     }, 0);
 
     // 2. 設定即時監聽 (Realtime Subscription)
@@ -298,7 +327,7 @@ export default function Home() {
       window.clearTimeout(initialFetch);
       supabase.removeChannel(channel);
     };
-  }, [fetchCategories, fetchCommentCounts, fetchPosts]);
+  }, [fetchCategories, fetchCommentCounts, fetchPosts, fetchStockQuotes]);
 
   return (
     <main className="min-h-screen bg-[#080604] py-10 px-4 text-zinc-100 sm:px-6 lg:px-8">
@@ -315,6 +344,12 @@ export default function Home() {
             即時資訊推送與 AI 對話牆
           </p>
         </header>
+
+        <StockTicker
+          quotes={stockQuotes}
+          loading={stockQuotesLoading}
+          error={stockQuotesError}
+        />
 
         <section className="mb-6 rounded-2xl border border-[#2a201c] bg-[#14100f] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.25)]">
           <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
