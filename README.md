@@ -11,6 +11,7 @@
 - 可搜尋新聞、依分類篩選、展開文章內容
 - 可在文章下方留言，系統會根據文章與留言產生 Siami AI 回覆
 - 可由 Vercel Cron 每天台灣時間 08:55 抓取台股相關 RSS 新聞並寫入 feed
+- 提供 `/api/cron/fetch-news` 相容端點，方便 Hermes agent cron job 呼叫同一套新聞整合流程
 
 ## 資料庫
 
@@ -57,3 +58,10 @@ npm run build
 ## 部署
 
 建議部署到 Vercel，並在 Vercel Project Environment Variables 設定 Supabase 相關變數。
+
+若 Hermes agent 要觸發同一套新聞整合流程，請讓它呼叫：
+
+```bash
+GET https://my-siami-feed.vercel.app/api/cron/fetch-news
+Authorization: Bearer <CRON_SECRET>
+```
