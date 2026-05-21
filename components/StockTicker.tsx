@@ -45,7 +45,7 @@ export default function StockTicker({ quotes, loading, error }: StockTickerProps
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-5 gap-2">
         {loading && quotes.length === 0 ? (
           Array.from({ length: 5 }).map((_, index) => (
             <div
@@ -65,18 +65,18 @@ export default function StockTicker({ quotes, loading, error }: StockTickerProps
                 href={quote.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-xl border border-[#2a201c] bg-[#0d0a09] p-3 transition hover:border-[#ff7447]/60 hover:bg-[#17110f]"
+                className="min-w-0 rounded-xl border border-[#2a201c] bg-[#0d0a09] p-2 transition hover:border-[#ff7447]/60 hover:bg-[#17110f]"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-50">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-zinc-50">
                       {quote.displayName}
                     </p>
                     <p className="mt-0.5 text-[11px] text-zinc-600">
                       {quote.symbol}
                     </p>
                   </div>
-                  <span className="rounded-full border border-[#2a201c] px-2 py-0.5 text-[10px] text-zinc-500">
+                  <span className="shrink-0 rounded-full border border-[#2a201c] px-1.5 py-0.5 text-[10px] text-zinc-500">
                     {getStatusLabel(quote.status)}
                   </span>
                 </div>
@@ -87,7 +87,7 @@ export default function StockTicker({ quotes, loading, error }: StockTickerProps
                   </p>
                 ) : (
                   <>
-                    <p className="mt-4 text-2xl font-semibold text-zinc-50">
+                    <p className="mt-3 text-xl font-semibold text-zinc-50">
                       {formatNumber(quote.price)}
                     </p>
                     <p className={`mt-1 text-xs font-medium ${accentClass}`}>
