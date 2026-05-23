@@ -460,6 +460,7 @@ export default function Home() {
               commentCount={commentCount}
               isExpanded={isExpanded}
               showFullSummary={isArchiveView}
+              showArticleBody
               onToggle={() => handleTogglePost(post.id)}
             >
               <div className="space-y-4">

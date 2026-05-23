@@ -13,6 +13,7 @@ interface PostCardProps {
     commentCount?: number;
     isExpanded: boolean;
     showFullSummary?: boolean;
+    showArticleBody?: boolean;
     onToggle: () => void;
     children?: React.ReactNode;
 }
@@ -29,10 +30,16 @@ export default function PostCard({
     commentCount = 0,
     isExpanded,
     showFullSummary = false,
+    showArticleBody = true,
     onToggle,
     children,
 }: PostCardProps) {
     const typeLabel = type === 'news' ? '新聞' : '留言';
+    const bodyContent = content?.trim();
+    const articleBody = bodyContent || summary;
+    const showSummaryLine = Boolean(
+      summary && (!bodyContent || summary.trim() !== bodyContent)
+    );
 
     return (
         <div className="group relative rounded-2xl border border-[#2a201c] bg-[#1b1715] p-6 shadow-[0_18px_60px_rgba(0,0,0,0.24)] transition-all hover:border-[#ff7447]/50 hover:bg-[#211b18] mb-4">
@@ -56,13 +63,26 @@ export default function PostCard({
                 {title}
             </h3>
 
-            <p
-                className={`mb-4 text-sm leading-relaxed text-zinc-400 ${
-                    showFullSummary ? '' : 'line-clamp-2'
-                }`}
-            >
-                {summary}
-            </p>
+            {showSummaryLine && (
+                <p
+                    className={`text-sm leading-relaxed text-zinc-400 ${
+                        showFullSummary ? 'mb-4' : 'mb-3 line-clamp-2'
+                    }`}
+                >
+                    {summary}
+                </p>
+            )}
+
+            {showArticleBody && articleBody && (
+                <div className="mb-4 rounded-xl border border-[#2a201c] bg-[#120f0e] p-4">
+                    <p className="mb-2 text-xs font-semibold text-[#ff7447]">
+                        {bodyContent ? '文章內容' : '文章摘要'}
+                    </p>
+                    <p className="whitespace-pre-line text-sm leading-7 text-zinc-300">
+                        {articleBody}
+                    </p>
+                </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -87,16 +107,8 @@ export default function PostCard({
                 )}
             </div>
 
-            {isExpanded && (
+            {isExpanded && children && (
                 <div className="mt-5 border-t border-[#2a201c] pt-5">
-                    {content && (
-                        <div className="mb-5 rounded-xl border border-[#2a201c] bg-[#120f0e] p-4">
-                            <p className="mb-2 text-xs font-semibold text-[#ff7447]">AI 整理重點</p>
-                            <p className="whitespace-pre-line text-sm leading-7 text-zinc-300">
-                                {content}
-                            </p>
-                        </div>
-                    )}
                     {children}
                 </div>
             )}
