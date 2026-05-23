@@ -12,6 +12,7 @@ interface PostCardProps {
     sourceUrl?: string;
     commentCount?: number;
     isExpanded: boolean;
+    showFullSummary?: boolean;
     onToggle: () => void;
     children?: React.ReactNode;
 }
@@ -27,6 +28,7 @@ export default function PostCard({
     sourceUrl,
     commentCount = 0,
     isExpanded,
+    showFullSummary = false,
     onToggle,
     children,
 }: PostCardProps) {
@@ -54,7 +56,11 @@ export default function PostCard({
                 {title}
             </h3>
 
-            <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-zinc-400">
+            <p
+                className={`mb-4 text-sm leading-relaxed text-zinc-400 ${
+                    showFullSummary ? '' : 'line-clamp-2'
+                }`}
+            >
                 {summary}
             </p>
 

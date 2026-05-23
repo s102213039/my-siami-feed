@@ -285,7 +285,7 @@ async function filterExisting(posts: PreparedPost[]) {
   );
 }
 
-export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestResult> {
+export async function prepareNewsPostsForInsert() {
   const candidates = await collectCandidates();
   const aiPosts = await buildGeminiPosts(candidates).catch((error) => {
     console.error('Gemini news digest failed:', error);
@@ -293,7 +293,17 @@ export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestRe
   });
   const prepared = aiPosts ?? candidates.map(buildFallbackPost);
   const newPosts = await filterExisting(prepared);
-  const limitedPosts = newPosts.slice(0, MAX_NEWS_ITEMS);
+
+  return {
+    candidates,
+    prepared,
+    limitedPosts: newPosts.slice(0, MAX_NEWS_ITEMS),
+    usedAi: Boolean(aiPosts),
+  };
+}
+
+export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestResult> {
+  const { candidates, prepared, limitedPosts, usedAi } = await prepareNewsPostsForInsert();
 
   if (!dryRun && limitedPosts.length > 0) {
     const categoryId = await getFinanceCategoryId();
@@ -317,7 +327,7 @@ export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestRe
     skipped: prepared.length - limitedPosts.length,
     candidates: candidates.length,
     dryRun,
-    usedAi: Boolean(aiPosts),
+    usedAi,
     hermesLegacyCandidates: candidates.filter((item) => item.isHermesLegacy).length,
     warning: candidates.length < MIN_TARGET_ITEMS
       ? `目前來源只取得 ${candidates.length} 則候選新聞，低於目標 ${MIN_TARGET_ITEMS} 則。`
