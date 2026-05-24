@@ -25,8 +25,11 @@ type PreparedPost = {
   title: string;
   summary: string;
   content: string;
+  detail: string;
   source_url: string;
 };
+
+const MAX_DETAIL_LENGTH = 8000;
 
 type DigestResult = {
   inserted: number;
@@ -194,12 +197,17 @@ async function collectCandidates() {
   return [...hermesLegacyItems, ...marketItems].slice(0, MAX_NEWS_ITEMS);
 }
 
+function buildDetailFromFeed(item: FeedItem) {
+  return normalizeWhitespace(item.rawContent).slice(0, MAX_DETAIL_LENGTH);
+}
+
 function buildFallbackPost(item: FeedItem): PreparedPost {
-  const summary = item.rawContent.slice(0, 160) || item.title;
+  const detail = buildDetailFromFeed(item);
+  const summary = detail.slice(0, 160) || item.title;
   const content = [
     `來源：${item.sourceName}`,
     item.publishedAt ? `發布時間：${item.publishedAt}` : undefined,
-    item.rawContent || '此來源未提供完整內文，請點擊來源閱讀更多。',
+    '此則新聞已保存來源內文，請參考下方文章內容。',
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -208,8 +216,31 @@ function buildFallbackPost(item: FeedItem): PreparedPost {
     title: item.title.slice(0, 120),
     summary,
     content,
+    detail,
     source_url: item.sourceUrl,
   };
+}
+
+function attachDetailsFromCandidates(
+  posts: PreparedPost[],
+  candidates: FeedItem[]
+): PreparedPost[] {
+  const candidatesByUrl = new Map(
+    candidates.map((item) => [item.sourceUrl, item] as const)
+  );
+
+  return posts
+    .map((post) => {
+      const candidate = candidatesByUrl.get(post.source_url);
+      const detail = post.detail?.trim()
+        || (candidate ? buildDetailFromFeed(candidate) : '');
+
+      return {
+        ...post,
+        detail,
+      };
+    })
+    .filter((post) => post.detail.trim().length > 0);
 }
 
 async function buildGeminiPosts(items: FeedItem[]) {
@@ -291,7 +322,10 @@ export async function prepareNewsPostsForInsert() {
     console.error('Gemini news digest failed:', error);
     return undefined;
   });
-  const prepared = aiPosts ?? candidates.map(buildFallbackPost);
+  const prepared = attachDetailsFromCandidates(
+    aiPosts ?? candidates.map(buildFallbackPost),
+    candidates
+  );
   const newPosts = await filterExisting(prepared);
 
   return {
@@ -315,6 +349,7 @@ export async function runTaiwanStockNewsDigest(dryRun = false): Promise<DigestRe
         title: post.title,
         summary: post.summary,
         content: post.content,
+        detail: post.detail,
         source_url: post.source_url,
       }))
     );

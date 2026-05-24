@@ -34,6 +34,7 @@ function formatPost(item: SupabasePostRow): Post {
     title: item.title,
     summary: item.summary,
     content: item.content || undefined,
+    detail: item.detail || undefined,
     type: item.type,
     category_name: category?.name || '未分類',
     category_color: category?.color_code || '#94a3b8',
@@ -84,6 +85,7 @@ export default function Home() {
               title,
               summary,
               content,
+              detail,
               type,
               category_id,
               created_at,
@@ -207,7 +209,7 @@ export default function Home() {
     const keyword = searchQuery.trim().toLowerCase();
     const matchesCategory = selectedCategory === 'all'
       || post.category_id === selectedCategory;
-    const searchable = `${post.title} ${post.summary} ${post.content ?? ''}`.toLowerCase();
+    const searchable = `${post.title} ${post.summary} ${post.content ?? ''} ${post.detail ?? ''}`.toLowerCase();
     const matchesKeyword = !keyword || searchable.includes(keyword);
 
     return matchesCategory && matchesKeyword;
@@ -452,6 +454,7 @@ export default function Home() {
               title={post.title}
               summary={post.summary}
               content={post.content}
+              detail={post.detail}
               type={post.type}
               categoryName={post.category_name}
               categoryColor={post.category_color}

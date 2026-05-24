@@ -3,7 +3,7 @@ import { generateText } from 'ai';
 import { google } from '@ai-sdk/google';
 
 interface ReplyInput {
-  post: Pick<Post, 'title' | 'summary' | 'content' | 'source_url'>;
+  post: Pick<Post, 'title' | 'summary' | 'content' | 'detail' | 'source_url'>;
   comment: string;
   marketQuote?: MarketQuote;
 }
@@ -47,7 +47,8 @@ function buildPrompt({ post, comment, marketQuote }: ReplyInput) {
     '',
     `文章標題：${post.title}`,
     `文章摘要：${post.summary}`,
-    `文章內容：${post.content || '無'}`,
+    `文章內文：${post.detail || '無'}`,
+    `AI 整理：${post.content || '無'}`,
     `文章來源：${post.source_url || '無'}`,
     marketQuote
       ? `即時行情資料：${JSON.stringify(marketQuote)}`

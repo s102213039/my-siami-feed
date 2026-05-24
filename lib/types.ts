@@ -5,6 +5,7 @@ export interface Post {
   title: string;
   summary: string;
   content?: string;
+  detail?: string;
   type: PostType;
   category_id?: string;
   category_name: string;
@@ -36,6 +37,7 @@ export interface SupabasePostRow {
   title: string;
   summary: string;
   content: string | null;
+  detail: string | null;
   type: PostType;
   created_at: string;
   source_url: string | null;

@@ -5,6 +5,7 @@ interface PostCardProps {
     title: string;
     summary: string;
     content?: string;
+    detail?: string;
     type: 'news' | 'message';
     categoryName: string;
     categoryColor: string;
@@ -22,6 +23,7 @@ export default function PostCard({
     title,
     summary,
     content,
+    detail,
     type,
     categoryName,
     categoryColor,
@@ -35,10 +37,12 @@ export default function PostCard({
     children,
 }: PostCardProps) {
     const typeLabel = type === 'news' ? '新聞' : '留言';
-    const bodyContent = content?.trim();
-    const articleBody = bodyContent || summary;
-    const showSummaryLine = Boolean(
-      summary && (!bodyContent || summary.trim() !== bodyContent)
+    const detailContent = detail?.trim();
+    const insightContent = content?.trim();
+    const showSummaryLine = Boolean(summary);
+    const showInsight = Boolean(
+      insightContent
+      && (!detailContent || insightContent !== detailContent)
     );
 
     return (
@@ -73,13 +77,20 @@ export default function PostCard({
                 </p>
             )}
 
-            {showArticleBody && articleBody && (
+            {showArticleBody && detailContent && (
                 <div className="mb-4 rounded-xl border border-[#2a201c] bg-[#120f0e] p-4">
-                    <p className="mb-2 text-xs font-semibold text-[#ff7447]">
-                        {bodyContent ? '文章內容' : '文章摘要'}
-                    </p>
+                    <p className="mb-2 text-xs font-semibold text-[#ff7447]">文章內容</p>
                     <p className="whitespace-pre-line text-sm leading-7 text-zinc-300">
-                        {articleBody}
+                        {detailContent}
+                    </p>
+                </div>
+            )}
+
+            {showArticleBody && showInsight && (
+                <div className="mb-4 rounded-xl border border-[#2a201c] bg-[#120f0e]/60 p-4">
+                    <p className="mb-2 text-xs font-semibold text-[#ffb199]">AI 整理</p>
+                    <p className="whitespace-pre-line text-sm leading-7 text-zinc-300">
+                        {insightContent}
                     </p>
                 </div>
             )}
