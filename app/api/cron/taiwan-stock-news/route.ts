@@ -2,15 +2,22 @@ import { NextResponse } from 'next/server';
 import { runTaiwanStockNewsDigest } from '@/lib/news/taiwanStockNews';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 function isAuthorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
+  // Vercel Cron 排程會帶此 header；手動觸發可改用 Authorization: Bearer <CRON_SECRET>
+  if (request.headers.get('x-vercel-cron') === '1') {
+    return true;
+  }
+
+  const secret = process.env.CRON_SECRET?.trim();
 
   if (!secret) {
     return process.env.NODE_ENV !== 'production';
   }
 
-  return request.headers.get('authorization') === `Bearer ${secret}`;
+  const authorization = request.headers.get('authorization')?.trim();
+  return authorization === `Bearer ${secret}` || authorization === secret;
 }
 
 export async function GET(request: Request) {
