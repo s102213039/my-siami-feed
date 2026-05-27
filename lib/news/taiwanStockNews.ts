@@ -29,8 +29,6 @@ type PreparedPost = {
   source_url: string;
 };
 
-const MAX_DETAIL_LENGTH = 8000;
-
 type DigestResult = {
   inserted: number;
   skipped: number;
@@ -197,20 +195,18 @@ async function collectCandidates() {
   return [...hermesLegacyItems, ...marketItems].slice(0, MAX_NEWS_ITEMS);
 }
 
-function buildDetailFromFeed(item: FeedItem) {
-  return normalizeWhitespace(item.rawContent).slice(0, MAX_DETAIL_LENGTH);
-}
-
 function buildFallbackPost(item: FeedItem): PreparedPost {
-  const detail = buildDetailFromFeed(item);
-  const summary = detail.slice(0, 160) || item.title;
-  const content = [
-    `來源：${item.sourceName}`,
-    item.publishedAt ? `發布時間：${item.publishedAt}` : undefined,
-    '此則新聞已保存來源內文，請參考下方文章內容。',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const base = normalizeWhitespace(item.rawContent || item.title);
+  // summary：短一句，方便列表與搜尋
+  const summary = base.slice(0, 160) || item.title;
+  // detail：給使用者看的「簡短總結」，說明為什麼可能影響台股
+  const detailLines = [
+    base.slice(0, 360),
+    '（完整內容請點擊來源閱讀）',
+  ].filter(Boolean);
+  const detail = detailLines.join(' ');
+  // content：給 AI 或後續用途的同一份說明文字
+  const content = detail;
 
   return {
     title: item.title.slice(0, 120),
@@ -219,28 +215,6 @@ function buildFallbackPost(item: FeedItem): PreparedPost {
     detail,
     source_url: item.sourceUrl,
   };
-}
-
-function attachDetailsFromCandidates(
-  posts: PreparedPost[],
-  candidates: FeedItem[]
-): PreparedPost[] {
-  const candidatesByUrl = new Map(
-    candidates.map((item) => [item.sourceUrl, item] as const)
-  );
-
-  return posts
-    .map((post) => {
-      const candidate = candidatesByUrl.get(post.source_url);
-      const detail = post.detail?.trim()
-        || (candidate ? buildDetailFromFeed(candidate) : '');
-
-      return {
-        ...post,
-        detail,
-      };
-    })
-    .filter((post) => post.detail.trim().length > 0);
 }
 
 async function buildGeminiPosts(items: FeedItem[]) {
@@ -272,11 +246,34 @@ async function buildGeminiPosts(items: FeedItem[]) {
   });
 
   const json = result.text.replace(/^```json|```$/g, '').trim();
-  const parsed = JSON.parse(json) as PreparedPost[];
+  const parsed = JSON.parse(json) as Array<{
+    title: string;
+    summary: string;
+    content: string;
+    source_url: string;
+  }>;
 
-  return parsed
+  const prepared: PreparedPost[] = parsed
     .filter((item) => item.title && item.summary && item.content && item.source_url)
-    .slice(0, MAX_NEWS_ITEMS);
+    .slice(0, MAX_NEWS_ITEMS)
+    .map((item) => {
+      const base = normalizeWhitespace(item.content);
+      const detailLines = [
+        base.slice(0, 360),
+        '（完整內容請點擊來源閱讀）',
+      ].filter(Boolean);
+      const detail = detailLines.join(' ');
+
+      return {
+        title: item.title.slice(0, 120),
+        summary: item.summary,
+        content: detail,
+        detail,
+        source_url: item.source_url,
+      };
+    });
+
+  return prepared;
 }
 
 async function getFinanceCategoryId() {
@@ -322,10 +319,7 @@ export async function prepareNewsPostsForInsert() {
     console.error('Gemini news digest failed:', error);
     return undefined;
   });
-  const prepared = attachDetailsFromCandidates(
-    aiPosts ?? candidates.map(buildFallbackPost),
-    candidates
-  );
+  const prepared = aiPosts ?? candidates.map(buildFallbackPost);
   const newPosts = await filterExisting(prepared);
 
   return {
