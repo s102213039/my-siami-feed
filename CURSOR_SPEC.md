@@ -1,12 +1,12 @@
 # My Siami Feed - Cursor 開發規格書
 
-最後更新：2026-05-21
+最後更新：2026-06-01
 
 ## 1. 專案基本資訊與現狀
 
 - 專案名稱：My Siami Feed
 - 線上預覽：https://my-siami-feed.vercel.app/
-- 當前進度：約 40%
+- 當前進度：約 55%
 - 專案角色分工：
   - PM / 需求提出：Yanli
   - 開發執行：Cursor Agent
@@ -24,13 +24,21 @@
 
 ### 目前主要檔案
 
-- `app/page.tsx`：首頁 feed、搜尋、分類、展開討論、留言表單
+- `app/page.tsx`：首頁今日/歷史 feed、搜尋、分類、展開討論、留言表單、股價刷新策略
 - `app/api/comments/route.ts`：留言讀取與建立 API
-- `components/PostCard.tsx`：文章卡片與展開區塊
+- `app/api/cron/taiwan-stock-news/route.ts`：每日新聞 Cron（支援 `x-vercel-cron`）
+- `app/api/market-quotes/route.ts`：五檔台股/ETF 行情 API
+- `components/PostCard.tsx`：文章卡片、內文/detail 展示、展開討論區
+- `components/NewsArchiveSidebar.tsx`：左側依台北日期瀏覽歷史新聞
+- `components/StockTicker.tsx`：首頁股價橫列
+- `lib/news/taiwanStockNews.ts`：RSS 抓取、去重、detail 簡短總結寫入
+- `lib/dates/taipei.ts`：台北時區日期 key 與格式化
+- `lib/market/shouldRefreshQuotes.ts`：盤中才刷新股價的判斷
 - `lib/supabase.ts`：Supabase client
 - `lib/ai/commentReply.ts`：Gemini / 行情資料 / fallback 回覆邏輯
-- `lib/types.ts`：共用型別
+- `lib/types.ts`：共用型別（含 `Post.detail`）
 - `supabase/migrations/20260519160000_add_comments.sql`：comments 表相容 migration
+- `supabase/migrations/20260523120000_add_posts_detail.sql`：posts.detail 欄位
 
 ## 2. 核心設計架構與規則
 
@@ -100,14 +108,20 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - [x] 台積電股價問題可抓取 Yahoo Finance 行情資料
 - [x] 基礎 README
 - [x] 專案專屬 git sync workflow rule / skill
+- [x] 主畫面預設顯示台北時區「今日」新聞，左側歷史日期 archive
+- [x] 新聞卡片主區直接顯示內文（`content` / `detail`），留言區維持收合
+- [x] `posts.detail` 欄位與 migration；抓取時寫入每則新聞的簡短總結
+- [x] Vercel Cron 以 `x-vercel-cron` header 觸發，避免排程 401 靜默失敗
+- [x] 盤中才自動刷新股價；點標題回到今日 feed
 
 ### 未完成 / 待調整
 
-- [ ] 頁面細節優化：資訊密度、手機版、文章列表視覺層次
+- [ ] 頁面細節優化：資訊密度、手機版、文章列表視覺層次（archive 側欄在小螢幕的體驗）
 - [x] 展開討論筆數：列表初始狀態應直接顯示實際留言數，而不是打開後才更新
 - [x] 即時股價展示元件
 - [x] 每日上午 08:55（台灣時間）自動抓取台股相關重大新聞
 - [x] 新聞資料來源策略與去重策略
+- [ ] production 確認已套用 `20260523120000_add_posts_detail.sql` migration
 - [ ] 新聞分類自動化
 - [ ] AI 回覆品質提升：需要更多文章上下文、可引用來源、避免只根據單篇短內容回答
 - [ ] 測試策略：目前尚無正式 test script / e2e test
@@ -203,6 +217,28 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
      - 已確認五個 Yahoo symbol 都可讀取，其中萬海為 `2615.TW`、`00403A` 使用 `00403A.TW`。
      - 已驗證本地 API、頁面位置、`npm run lint`、`npm run build`。
 
+3. `[done]` 今日新聞與歷史 archive 瀏覽
+   - 主區預設只顯示台北時區當日新聞；較早新聞由左側 `NewsArchiveSidebar` 依日期選取。
+   - 點側欄標題可在主區展開單篇全文；點「Siami Feed」標題回到今日視圖。
+   - 股價僅在台股盤中時段自動刷新（`lib/market/shouldRefreshQuotes.ts`）。
+
+4. `[done]` 新聞內文與 `posts.detail`
+   - migration 新增 `posts.detail`；抓取流程寫入精簡總結（非完整 RSS 原文）。
+   - `PostCard` 優先顯示 `detail`，完整原文由使用者點來源連結查看。
+   - 新寫入文章需有內文才入庫；舊文無 `detail` 時仍只顯示摘要。
+
+5. `[done]` Vercel Cron 排程修復
+   - `/api/cron/taiwan-stock-news` 信任 `x-vercel-cron`，避免僅比對 `CRON_SECRET` 導致排程 401。
+   - 延長 cron 執行時間上限。
+
+### 下一階段建議（2026-06-01）
+
+1. `[todo]` 確認 production Supabase 已套用 `posts.detail` migration，並抽查今日 08:55 Cron 日誌與新寫入貼文。
+2. `[todo]` 手機版 RWD：archive 側欄改為可收合抽屜或底部導覽，避免主內容被擠壓。
+3. `[todo]` 新聞分類自動化：依 RSS 關鍵字或來源對應到 `categories`（需先與 PM 確認分類表）。
+4. `[todo]` AI 回覆品質：留言時帶入 `detail` / `source_url` 作為 Gemini 上下文。
+5. `[todo]` 測試策略：至少為 `lib/dates/taipei.ts`、新聞去重、Cron auth 加單元測試。
+
 ## 5. 完成定義（Definition of Done）
 
 每個功能或 bug 修復完成時，必須滿足：
@@ -275,6 +311,31 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - 依 PM 回饋微調股價卡片：
   - 移除卡片下方更新時間。
   - ETF（`0050`、`00403A`）主標題改顯示不含 `.TW` 的代號；名稱下方仍保留完整代號列。
+
+### 2026-05-24
+
+- 重構首頁 feed 為「今日 / 歷史」雙視圖：
+  - 新增 `components/NewsArchiveSidebar.tsx`、`lib/dates/taipei.ts`。
+  - 主畫面預設只顯示台北時區當日新聞；歷史依日期在左側瀏覽。
+  - 新增 `lib/market/shouldRefreshQuotes.ts`，盤中才刷新股價。
+- 調整 `PostCard`：主區預設顯示文章正文，留言區維持收合展開。
+- 新增 `posts.detail` migration 與抓取寫入 RSS 內文；`PostCard` 優先顯示 `detail`。
+- 修復 Vercel Cron：`x-vercel-cron` header 觸發、延長執行上限，避免排程 401。
+
+### 2026-05-27
+
+- 調整新聞 `detail` 策略：不再保存完整 RSS 原文，改為每則新聞的簡短總結寫入 `detail`。
+- 前端以「文章內容」呈現總結；完整內文交由使用者點來源連結查看。
+
+### 2026-05-31
+
+- **無 git 提交、無程式變更**（距離上次開發已間隔約 4 天）。
+- 建議事項未執行：production migration 確認、手機版 archive UI、Cron 執行驗證。
+
+### 2026-06-01
+
+- 每日自動化檢視：同步 `CURSOR_SPEC.md` 開發日誌與任務看板至 main 最新狀態（`9489ff8`）。
+- 本日建議優先序見第 4 節「下一階段建議」。
 
 ### 2026-05-19 至 2026-05-20 既有進度摘要
 
