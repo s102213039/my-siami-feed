@@ -1,12 +1,12 @@
 # My Siami Feed - Cursor 開發規格書
 
-最後更新：2026-05-21
+最後更新：2026-06-12
 
 ## 1. 專案基本資訊與現狀
 
 - 專案名稱：My Siami Feed
 - 線上預覽：https://my-siami-feed.vercel.app/
-- 當前進度：約 40%
+- 當前進度：約 55%
 - 專案角色分工：
   - PM / 需求提出：Yanli
   - 開發執行：Cursor Agent
@@ -24,13 +24,21 @@
 
 ### 目前主要檔案
 
-- `app/page.tsx`：首頁 feed、搜尋、分類、展開討論、留言表單
+- `app/page.tsx`：首頁 feed、今日/歷史切換、搜尋、分類、展開討論、留言表單
 - `app/api/comments/route.ts`：留言讀取與建立 API
-- `components/PostCard.tsx`：文章卡片與展開區塊
+- `app/api/cron/taiwan-stock-news/route.ts`：每日新聞抓取 Cron（支援 `x-vercel-cron` 與 `CRON_SECRET`）
+- `app/api/market-quotes/route.ts`：股價行情 API
+- `components/PostCard.tsx`：文章卡片、預設顯示 `detail` 內文、展開討論區塊
+- `components/NewsArchiveSidebar.tsx`：左側歷史日期列表
+- `components/StockTicker.tsx`：即時股價卡片
 - `lib/supabase.ts`：Supabase client
 - `lib/ai/commentReply.ts`：Gemini / 行情資料 / fallback 回覆邏輯
+- `lib/dates/taipei.ts`：台北時區日期 key 與格式化
+- `lib/news/taiwanStockNews.ts`：RSS 抓取、去重、寫入 posts（含 `detail` 簡短總結）
+- `lib/market/stockQuotes.ts`、`lib/market/shouldRefreshQuotes.ts`：股價讀取與盤中刷新判斷
 - `lib/types.ts`：共用型別
 - `supabase/migrations/20260519160000_add_comments.sql`：comments 表相容 migration
+- `supabase/migrations/20260523120000_add_posts_detail.sql`：posts.detail 欄位
 
 ## 2. 核心設計架構與規則
 
@@ -100,6 +108,11 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - [x] 台積電股價問題可抓取 Yahoo Finance 行情資料
 - [x] 基礎 README
 - [x] 專案專屬 git sync workflow rule / skill
+- [x] 主畫面預設顯示今日新聞（台北時區）
+- [x] 左側歷史日期列表（`NewsArchiveSidebar`），可依日期瀏覽過往新聞
+- [x] `posts.detail` 欄位：保存並展示 RSS 原文或簡短總結
+- [x] 新聞卡片預設展開顯示文章內文（`detail`）
+- [x] Vercel Cron 可用 `x-vercel-cron` header 觸發，不需額外 Bearer token
 
 ### 未完成 / 待調整
 
@@ -108,9 +121,10 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - [x] 即時股價展示元件
 - [x] 每日上午 08:55（台灣時間）自動抓取台股相關重大新聞
 - [x] 新聞資料來源策略與去重策略
-- [ ] 新聞分類自動化
+- [ ] 新聞分類自動化（目前多數寫入 `finance` 分類）
 - [ ] AI 回覆品質提升：需要更多文章上下文、可引用來源、避免只根據單篇短內容回答
 - [ ] 測試策略：目前尚無正式 test script / e2e test
+- [ ] 歷史新聞側欄手機版體驗（目前以桌面 sticky 為主，小螢幕可再優化）
 
 ### 可以碰的範圍
 
@@ -203,6 +217,32 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
      - 已確認五個 Yahoo symbol 都可讀取，其中萬海為 `2615.TW`、`00403A` 使用 `00403A.TW`。
      - 已驗證本地 API、頁面位置、`npm run lint`、`npm run build`。
 
+3. `[done]` 今日新聞預設與歷史日期瀏覽
+   - 主畫面預設只顯示台北時區「今日」新聞。
+   - 左側 `NewsArchiveSidebar` 依日期分組列出過往新聞，可切換瀏覽。
+   - 新增 `lib/dates/taipei.ts` 統一日期 key 計算。
+
+4. `[done]` posts.detail 與文章內文展示
+   - migration 新增 `posts.detail` 欄位。
+   - 新聞 Cron 寫入 RSS 原文或整理後的簡短總結至 `detail`。
+   - `PostCard` 預設展開顯示 `detail` 作為「文章內容」。
+   - `detail` 定位為簡短總結（說明為何可能影響台股），完整內容引導至來源連結。
+
+5. `[done]` Vercel Cron 授權修正
+   - `/api/cron/taiwan-stock-news` 接受 `x-vercel-cron: 1` header，讓 Vercel 排程不需 Bearer token 即可觸發。
+   - 手動觸發仍可用 `Authorization: Bearer <CRON_SECRET>`。
+
+### 下一階段優先（2026-06-12 建議）
+
+1. `[todo]` 新聞分類自動化
+   - 依標題/內容關鍵字或 Gemini 將新聞分到半導體、航運、匯率等既有或新分類。
+2. `[todo]` 手機版 RWD 優化
+   - 歷史側欄、股價 ticker、新聞卡片在小螢幕的排版與資訊密度。
+3. `[todo]` AI 回覆品質
+   - 留言回覆時帶入 `detail`、來源 URL、同日相關新聞等更多上下文。
+4. `[todo]` 驗證 production Cron
+   - 確認 08:55 排程有成功寫入今日新聞（查 Vercel Cron logs 與 Supabase posts）。
+
 ## 5. 完成定義（Definition of Done）
 
 每個功能或 bug 修復完成時，必須滿足：
@@ -275,6 +315,39 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - 依 PM 回饋微調股價卡片：
   - 移除卡片下方更新時間。
   - ETF（`0050`、`00403A`）主標題改顯示不含 `.TW` 的代號；名稱下方仍保留完整代號列。
+
+### 2026-05-24
+
+- 主畫面預設今日新聞並加入左側歷史日期列表：
+  - 新增 `NewsArchiveSidebar` 與 `lib/dates/taipei.ts`。
+  - `app/page.tsx` 支援 `today` / `archive` 兩種 feed 視圖，預設顯示台北時區今日新聞。
+- 新聞卡片預設顯示文章正文：
+  - `PostCard` 預設展開 `detail` 區塊作為文章內容。
+- 新增 `posts.detail` 保存並展示 RSS 原文內文：
+  - migration `20260523120000_add_posts_detail.sql`。
+  - `lib/news/taiwanStockNews.ts` 寫入 RSS 原文至 `detail`。
+- 修復 Vercel Cron 授權：
+  - `/api/cron/taiwan-stock-news` 接受 `x-vercel-cron: 1`，解決排程 401 問題。
+
+### 2026-05-27
+
+- 將 `detail` 改為每則新聞的簡短總結：
+  - 不再直接塞入完整 RSS 原文；改為 360 字內摘要 +「完整內容請點擊來源閱讀」。
+  - AI 整理路徑（`NEWS_DIGEST_USE_AI=true`）同樣產出簡短 `detail`。
+  - `content` 與 `detail` 對齊，方便列表與 AI 後續使用。
+
+### 2026-06-11
+
+- 無新的 commit 或部署紀錄；開發暫停約兩週（自 5/27 至 6/11）。
+
+### 2026-06-12（本日計劃）
+
+- 同步更新本規格書：補登 5/24–5/27 遺漏的開發日誌，進度調整為約 55%。
+- 建議今日推進（依優先順序）：
+  1. 驗證 production 每日 Cron 是否正常寫入（Vercel logs + Supabase 今日 posts 筆數）。
+  2. 新聞分類自動化：從關鍵字規則著手，避免全部落在 `finance`。
+  3. 手機版 RWD：歷史側欄改為可收合或底部抽屜，股價 ticker 小螢幕橫向捲動。
+  4. AI 回覆帶入 `detail` 與來源，提升討論區回覆品質。
 
 ### 2026-05-19 至 2026-05-20 既有進度摘要
 
