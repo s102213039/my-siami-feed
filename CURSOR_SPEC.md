@@ -1,6 +1,6 @@
 # My Siami Feed - Cursor 開發規格書
 
-最後更新：2026-06-13
+最後更新：2026-06-14
 
 ## 1. 專案基本資訊與現狀
 
@@ -242,7 +242,7 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
    - 修復：`/api/cron/taiwan-stock-news` 接受 `x-vercel-cron: 1` header；手動觸發仍可用 `Authorization: Bearer <CRON_SECRET>`。
    - 完成狀態：已合併並部署。
 
-### 下一階段建議（2026-06-13 盤點）
+### 下一階段建議（2026-06-14 盤點）
 
 優先順序建議如下：
 
@@ -258,6 +258,27 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
    - 可加 `/api/cron/taiwan-stock-news?dryRun=1` 健康檢查或簡易監控。
 5. `[todo]` 基礎測試
    - 至少為 `lib/dates/taipei.ts`、新聞去重、`shouldRefreshQuotes` 加 unit test。
+
+### 今日執行計劃（2026-06-14）
+
+> 本節由每日自動化排程更新，供 PM 與 Agent 當日開工前快速對齊。
+
+**昨日回顧（6/13）**：僅文件同步，無程式碼 commit。補登 5/24–5/27 已完成功能、進度調至約 55%，並列出下一階段五項優先順序。
+
+**今日建議聚焦（擇一或依序推進）**：
+
+| 順序 | 任務 | 預估影響 | 具體步驟 |
+|------|------|----------|----------|
+| A | 手機版歷史側欄 | 高（使用者體驗） | 在 `NewsArchiveSidebar` 加 `< lg` 可收合按鈕或底部 sheet；`app/page.tsx` 調整主欄與側欄堆疊順序 |
+| B | Cron 健康檢查 | 中（營運信心） | 本機或 production 呼叫 `GET /api/cron/taiwan-stock-news?dryRun=1`；對照 Vercel Cron logs 確認近 7 日 08:55 成功 |
+| C | 關鍵字新聞分類 | 中（內容組織） | 在 `lib/news/taiwanStockNews.ts` 加關鍵字對照表，寫入時選擇既有 `categories`（先不接 Gemini，零 API 成本） |
+| D | 基礎 unit test | 低風險長期 | 為 `lib/dates/taipei.ts`、`shouldRefreshQuotes` 加 Vitest；設定 `npm test` script |
+
+**建議今日第一個實作任務**：A（手機版歷史側欄）— 風險低、可見度高，且 6/13 已列為頭號優先項。
+
+**阻塞項提醒**：
+- 新聞分類若要用 Gemini，需 PM 確認 `NEWS_DIGEST_USE_AI=true` 與 API 用量。
+- Production Cron log 需 Vercel dashboard 權限；Agent 可用 dryRun 驗證端點邏輯。
 
 ## 5. 完成定義（Definition of Done）
 
@@ -365,4 +386,15 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - 自動化排程盤點：Git 顯示 6/12 無新 commit；最近一次開發為 5/24–5/27，規格書自 5/21 後未同步。
 - 更新本文件：補登 5/24–5/27 完成功能、進度調整為約 55%、新增下一階段建議清單。
 - 今日建議優先項：手機版 UI 優化 → 新聞分類自動化 → AI 回覆品質 → Cron 健康檢查 → 基礎 unit test。
+
+### 2026-06-14
+
+- 每日自動化排程：延續 6/13 盤點，同步更新本文件至 2026-06-14。
+- 確認程式碼主線仍停在 `9489ff8`（5/27 detail 摘要），6/13–6/14 皆無新功能 commit。
+- 程式現況快覽：
+  - `NewsArchiveSidebar` 已有 `lg:` 斷點但小螢幕仍為固定側欄，尚未實作抽屜/收合。
+  - 新聞 Cron 全部寫入 `finance` category，分類自動化仍待實作。
+  - `image_url` 欄位存在但 `PostCard` 未渲染縮圖。
+  - 搜尋/分類篩選僅作用於「今日新聞」視圖，歷史 archive 模式未套用。
+- 新增「今日執行計劃（2026-06-14）」：建議優先實作手機版歷史側欄（任務 A），其次 Cron dryRun 健康檢查（任務 B）。
 
