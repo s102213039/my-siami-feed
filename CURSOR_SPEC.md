@@ -1,12 +1,12 @@
 # My Siami Feed - Cursor 開發規格書
 
-最後更新：2026-05-21
+最後更新：2026-06-15
 
 ## 1. 專案基本資訊與現狀
 
 - 專案名稱：My Siami Feed
 - 線上預覽：https://my-siami-feed.vercel.app/
-- 當前進度：約 40%
+- 當前進度：約 55%
 - 專案角色分工：
   - PM / 需求提出：Yanli
   - 開發執行：Cursor Agent
@@ -24,13 +24,23 @@
 
 ### 目前主要檔案
 
-- `app/page.tsx`：首頁 feed、搜尋、分類、展開討論、留言表單
+- `app/page.tsx`：首頁 feed、今日/歷史新聞切換、搜尋、分類、展開討論、留言表單
 - `app/api/comments/route.ts`：留言讀取與建立 API
-- `components/PostCard.tsx`：文章卡片與展開區塊
+- `app/api/cron/taiwan-stock-news/route.ts`：每日新聞 Cron（支援 `x-vercel-cron` 與 `CRON_SECRET`）
+- `app/api/cron/fetch-news/route.ts`：Hermes 相容手動觸發端點
+- `app/api/market-quotes/route.ts`：五檔台股即時行情 API
+- `components/PostCard.tsx`：文章卡片、內文摘要與展開討論區塊
+- `components/StockTicker.tsx`：首頁股價列
+- `components/NewsArchiveSidebar.tsx`：左側歷史新聞日期列表
 - `lib/supabase.ts`：Supabase client
 - `lib/ai/commentReply.ts`：Gemini / 行情資料 / fallback 回覆邏輯
+- `lib/news/taiwanStockNews.ts`：RSS 收集、去重、寫入 posts
+- `lib/market/stockQuotes.ts`、`lib/market/shouldRefreshQuotes.ts`：行情與盤中更新判斷
+- `lib/dates/taipei.ts`：台北時區日期分組
 - `lib/types.ts`：共用型別
 - `supabase/migrations/20260519160000_add_comments.sql`：comments 表相容 migration
+- `supabase/migrations/20260523120000_add_posts_detail.sql`：posts.detail 欄位
+- `vercel.json`：每日 08:55（台灣時間）新聞 Cron 排程
 
 ## 2. 核心設計架構與規則
 
@@ -100,17 +110,23 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - [x] 台積電股價問題可抓取 Yahoo Finance 行情資料
 - [x] 基礎 README
 - [x] 專案專屬 git sync workflow rule / skill
+- [x] 主畫面預設顯示台北時區「今日新聞」
+- [x] 左側歷史新聞日期列表（`NewsArchiveSidebar`）
+- [x] 股價僅在台股盤中才自動刷新（`shouldRefreshQuotes`）
+- [x] `posts.detail` 欄位與文章內文摘要展示
+- [x] Vercel Cron 以 `x-vercel-cron` header 觸發新聞抓取（無需 Bearer token）
 
 ### 未完成 / 待調整
 
-- [ ] 頁面細節優化：資訊密度、手機版、文章列表視覺層次
+- [ ] 頁面細節優化：資訊密度、手機版、文章列表視覺層次（歷史側欄在小螢幕的體驗）
 - [x] 展開討論筆數：列表初始狀態應直接顯示實際留言數，而不是打開後才更新
 - [x] 即時股價展示元件
 - [x] 每日上午 08:55（台灣時間）自動抓取台股相關重大新聞
 - [x] 新聞資料來源策略與去重策略
-- [ ] 新聞分類自動化
+- [ ] 新聞分類自動化（目前全部寫入 `finance`）
 - [ ] AI 回覆品質提升：需要更多文章上下文、可引用來源、避免只根據單篇短內容回答
 - [ ] 測試策略：目前尚無正式 test script / e2e test
+- [ ] Production Cron 執行監控：確認 5/24 修復後每日 08:55 排程穩定寫入
 
 ### 可以碰的範圍
 
@@ -203,6 +219,72 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
      - 已確認五個 Yahoo symbol 都可讀取，其中萬海為 `2615.TW`、`00403A` 使用 `00403A.TW`。
      - 已驗證本地 API、頁面位置、`npm run lint`、`npm run build`。
 
+3. `[done]` 今日新聞與歷史新聞瀏覽
+   - 主畫面預設只顯示台北時區當日新聞。
+   - 較早新聞改由左側 `NewsArchiveSidebar` 依日期分組瀏覽，可展開/收起日期、點選單篇在主區閱讀。
+   - 點擊網站標題可回到今日新聞視圖。
+   - 股價 ticker 僅在台股盤中時段才自動刷新，避免非交易時段無意義輪詢。
+   - 完成狀態：
+     - 新增 `lib/dates/taipei.ts`、`components/NewsArchiveSidebar.tsx`、`lib/market/shouldRefreshQuotes.ts`。
+     - 重構 `app/page.tsx` 支援 `today` / `archive` 兩種 feed 視圖。
+     - 已驗證 `npm run lint`、`npm run build`。
+
+4. `[done]` 新聞內文摘要（`posts.detail`）
+   - 新增 `posts.detail` 欄位（migration `20260523120000_add_posts_detail.sql`）。
+   - 主畫面新聞卡片預設顯示 `detail` 作為「文章內容」摘要區塊。
+   - 抓取流程改為存入簡短總結而非完整 RSS 原文；完整內文引導使用者點來源連結閱讀。
+   - `commentReply` 已納入 `detail` 作為 AI 回覆上下文。
+   - 完成狀態：
+     - 已驗證 `npm run lint`、`npm run build`。
+
+5. `[done]` Vercel Cron 授權修復
+   - 現象：Vercel 排程觸發時不帶 `Authorization` header，導致新聞 Cron 回傳 401。
+   - 修復：`/api/cron/taiwan-stock-news` 接受 `x-vercel-cron: 1` header；手動觸發仍可用 `Authorization: Bearer <CRON_SECRET>`。
+   - 完成狀態：已合併並部署。
+
+### 下一階段建議（2026-06-15 盤點）
+
+優先順序建議如下：
+
+1. `[todo]` 手機版與資訊密度優化
+   - 歷史側欄在小螢幕改為可收合抽屜或底部 tab。
+   - 股價列與新聞卡片間距、字級在手機上再微調。
+2. `[todo]` 新聞分類自動化
+   - 依關鍵字或 Gemini（需 PM 確認 `NEWS_DIGEST_USE_AI`）將新聞分到半導體、航運、總經等既有 category。
+3. `[todo]` AI 回覆品質
+   - 留言回覆時引用 `source_url`、同日相關新聞摘要，減少只看單篇 `detail` 的侷限。
+4. `[todo]` Cron 與資料健康檢查
+   - 查 Vercel Cron logs，確認 08:55 排程自 5/24 修復後持續成功。
+   - 可加 `/api/cron/taiwan-stock-news?dryRun=1` 健康檢查或簡易監控。
+5. `[todo]` 基礎測試
+   - 至少為 `lib/dates/taipei.ts`、新聞去重、`shouldRefreshQuotes` 加 unit test。
+
+### 今日執行計劃（2026-06-15）
+
+> 本節由每日自動化排程更新，供 PM 與 Agent 當日開工前快速對齊。
+
+**昨日回顧（6/14）**：僅文件同步，無程式碼 commit。延續 6/13 盤點，將規格書更新至 2026-06-14、補登程式現況快覽，並新增當日執行計劃表（任務 A–D）。6/14 建議的「手機版歷史側欄」尚未動工。
+
+**累積待辦狀態**：自 5/27 最後一次功能 commit（`9489ff8`）以來，已連續 19 天無新功能合併；下一階段五項 `[todo]` 均維持未開始。
+
+**今日建議聚焦（擇一或依序推進）**：
+
+| 順序 | 任務 | 預估影響 | 具體步驟 |
+|------|------|----------|----------|
+| A | 手機版歷史側欄 | 高（使用者體驗） | 在 `NewsArchiveSidebar` 加 `< lg` 可收合按鈕或底部 sheet；`app/page.tsx` 調整主欄與側欄堆疊順序；手機寬度下主內容優先、側欄預設收合 |
+| B | Cron 健康檢查 | 中（營運信心） | 本機或 production 呼叫 `GET /api/cron/taiwan-stock-news?dryRun=1`；對照 Vercel Cron logs 確認近 7 日 08:55 成功 |
+| C | 關鍵字新聞分類 | 中（內容組織） | 在 `lib/news/taiwanStockNews.ts` 加關鍵字對照表，寫入時選擇既有 `categories`（先不接 Gemini，零 API 成本） |
+| D | 基礎 unit test | 低風險長期 | 為 `lib/dates/taipei.ts`、`shouldRefreshQuotes` 加 Vitest；設定 `npm test` script |
+| E | 歷史 archive 搜尋/分類 | 中（功能完整性） | 將 `app/page.tsx` 的搜尋與分類篩選邏輯延伸至 `archive` 視圖，避免歷史新聞無法篩選 |
+
+**建議今日第一個實作任務**：A（手機版歷史側欄）— 連續兩日列為頭號優先項，風險低、可見度高，完成後可直接勾選「手機版與資訊密度優化」部分子項。
+
+**若今日有實作時間，建議組合**：上午完成 A → 下午執行 B（dryRun 驗證，約 15 分鐘）→ 剩餘時間啟動 C 的關鍵字對照表雛形。
+
+**阻塞項提醒**：
+- 新聞分類若要用 Gemini，需 PM 確認 `NEWS_DIGEST_USE_AI=true` 與 API 用量。
+- Production Cron log 需 Vercel dashboard 權限；Agent 可用 dryRun 驗證端點邏輯。
+
 ## 5. 完成定義（Definition of Done）
 
 每個功能或 bug 修復完成時，必須滿足：
@@ -286,4 +368,45 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - 完成 Gemini API key 設定後的 production redeploy。
 - 驗證 Gemini API 生效：不再回傳「尚未啟用 AI」fallback。
 - 建立專案專屬 git sync workflow，要求每次修改前確認本地與 GitHub 遠端一致。
+
+### 2026-05-24
+
+- 重構首頁 feed 為「今日新聞」預設視圖：
+  - 新增 `lib/dates/taipei.ts` 處理台北時區日期 key 與顯示格式。
+  - 新增 `components/NewsArchiveSidebar.tsx`，左側依日期分組瀏覽歷史新聞。
+  - 新增 `lib/market/shouldRefreshQuotes.ts`，股價僅在台股盤中才自動刷新。
+  - 點選歷史文章可在主區展開全文；點 Siami Feed 標題回到今日視圖。
+- 新聞卡片預設顯示文章正文（`detail` / `content`）。
+- 新增 `posts.detail` migration，保存 RSS 原文內文供主畫面展示。
+- 修復 Vercel Cron 授權：允許 `x-vercel-cron: 1` header 觸發 `/api/cron/taiwan-stock-news`，解決排程 401 問題。
+
+### 2026-05-27
+
+- 調整新聞 `detail` 語意：抓取時改存「簡短總結」而非完整 RSS 原文。
+- 前端仍以「文章內容」區塊呈現 `detail`；完整內文引導使用者點來源連結。
+- 精簡 `lib/news/taiwanStockNews.ts` 的 fallback 與 Gemini 整理邏輯，統一 summary / detail / content 欄位策略。
+
+### 2026-06-13
+
+- 自動化排程盤點：Git 顯示 6/12 無新 commit；最近一次開發為 5/24–5/27，規格書自 5/21 後未同步。
+- 更新本文件：補登 5/24–5/27 完成功能、進度調整為約 55%、新增下一階段建議清單。
+- 今日建議優先項：手機版 UI 優化 → 新聞分類自動化 → AI 回覆品質 → Cron 健康檢查 → 基礎 unit test。
+
+### 2026-06-14
+
+- 每日自動化排程：延續 6/13 盤點，同步更新本文件至 2026-06-14。
+- 確認程式碼主線仍停在 `9489ff8`（5/27 detail 摘要），6/13–6/14 皆無新功能 commit。
+- 程式現況快覽：
+  - `NewsArchiveSidebar` 已有 `lg:` 斷點但小螢幕仍為固定側欄，尚未實作抽屜/收合。
+  - 新聞 Cron 全部寫入 `finance` category，分類自動化仍待實作。
+  - `image_url` 欄位存在但 `PostCard` 未渲染縮圖。
+  - 搜尋/分類篩選僅作用於「今日新聞」視圖，歷史 archive 模式未套用。
+- 新增「今日執行計劃（2026-06-14）」：建議優先實作手機版歷史側欄（任務 A），其次 Cron dryRun 健康檢查（任務 B）。
+
+### 2026-06-15
+
+- 每日自動化排程：延續 6/14 盤點，同步更新本文件至 2026-06-15。
+- 確認程式碼主線仍停在 `9489ff8`（5/27 detail 摘要），6/14–6/15 皆無新功能 commit。
+- 昨日（6/14）僅完成規格書同步與執行計劃制定，任務 A（手機版側欄）仍未實作。
+- 更新「今日執行計劃（2026-06-15）」：維持任務 A 為頭號優先，新增任務 E（歷史 archive 搜尋/分類延伸），並建議 A → B → C 的當日組合節奏。
 
