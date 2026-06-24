@@ -467,7 +467,7 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 
 ### 2026-06-24
 
-- 自動化 cron 回顧 6/23 工作：6/23 同樣僅完成規格書同步，連續六日無功能 commit；main 仍停在 `9489ff8`（2025-05-27）。
+- 自動化 cron 回顧 6/23 工作：6/23 同樣僅完成規格書同步，連續六日無功能 commit；main 仍停在 `9489ff8`（2026-05-27）。
 - 盤點現況（與程式碼一致，未變）：
   - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
   - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
