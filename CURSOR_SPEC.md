@@ -1,12 +1,12 @@
 # My Siami Feed - Cursor 開發規格書
 
-最後更新：2026-05-21
+最後更新：2026-07-21
 
 ## 1. 專案基本資訊與現狀
 
 - 專案名稱：My Siami Feed
 - 線上預覽：https://my-siami-feed.vercel.app/
-- 當前進度：約 40%
+- 當前進度：約 55%
 - 專案角色分工：
   - PM / 需求提出：Yanli
   - 開發執行：Cursor Agent
@@ -24,13 +24,23 @@
 
 ### 目前主要檔案
 
-- `app/page.tsx`：首頁 feed、搜尋、分類、展開討論、留言表單
+- `app/page.tsx`：首頁 feed、今日/歷史切換、搜尋、分類、展開討論、留言表單
 - `app/api/comments/route.ts`：留言讀取與建立 API
-- `components/PostCard.tsx`：文章卡片與展開區塊
+- `app/api/cron/taiwan-stock-news/route.ts`：每日台股新聞 Cron（支援 `x-vercel-cron` 與 `CRON_SECRET`）
+- `app/api/cron/fetch-news/route.ts`：Hermes 相容手動觸發端點
+- `app/api/market-quotes/route.ts`：股價行情 API
+- `components/PostCard.tsx`：文章卡片與展開區塊（含 `detail` 簡短總結展示）
+- `components/NewsArchiveSidebar.tsx`：左側依日期瀏覽歷史新聞（桌面版 sticky；手機版待改 drawer）
+- `components/StockTicker.tsx`：五檔即時股價列
 - `lib/supabase.ts`：Supabase client
 - `lib/ai/commentReply.ts`：Gemini / 行情資料 / fallback 回覆邏輯
+- `lib/news/taiwanStockNews.ts`：RSS 收集、去重、寫入 posts
+- `lib/market/stockQuotes.ts`、`lib/market/shouldRefreshQuotes.ts`：股價與刷新策略
+- `lib/dates/taipei.ts`：台灣時區日期分組
 - `lib/types.ts`：共用型別
 - `supabase/migrations/20260519160000_add_comments.sql`：comments 表相容 migration
+- `supabase/migrations/20260523120000_add_posts_detail.sql`：posts.detail 欄位
+- `vercel.json`：Cron 排程（UTC 00:55 = 台灣 08:55）
 
 ## 2. 核心設計架構與規則
 
@@ -100,17 +110,23 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - [x] 台積電股價問題可抓取 Yahoo Finance 行情資料
 - [x] 基礎 README
 - [x] 專案專屬 git sync workflow rule / skill
+- [x] 主畫面預設今日新聞，左側歷史日期列表瀏覽舊文
+- [x] `posts.detail` 欄位：保存並展示每則新聞的簡短總結（非 RSS 原文堆砌）
+- [x] Vercel Cron 以 `x-vercel-cron` header 觸發新聞抓取（無需 Bearer token）
 
 ### 未完成 / 待調整
 
-- [ ] 頁面細節優化：資訊密度、手機版、文章列表視覺層次
+- [ ] **手機版 RWD（最高優先）**：`NewsArchiveSidebar` 在小螢幕改為 drawer / 底部 sheet，避免歷史列表擠壓主 feed
+- [ ] 頁面細節優化：資訊密度、文章列表視覺層次
 - [x] 展開討論筆數：列表初始狀態應直接顯示實際留言數，而不是打開後才更新
 - [x] 即時股價展示元件
 - [x] 每日上午 08:55（台灣時間）自動抓取台股相關重大新聞
 - [x] 新聞資料來源策略與去重策略
-- [ ] 新聞分類自動化
+- [ ] 新聞分類自動化（建議先用關鍵字規則，避免 Gemini 費用）
+- [ ] Cron 健康檢查：production `dryRun=1` 驗證與 Vercel runtime logs 確認
 - [ ] AI 回覆品質提升：需要更多文章上下文、可引用來源、避免只根據單篇短內容回答
-- [ ] 測試策略：目前尚無正式 test script / e2e test
+- [ ] 測試策略：為 `lib/dates/taipei.ts`、`shouldRefreshQuotes`、新聞去重補最小單元測試
+- [ ] 歷史瀏覽視圖：搜尋/分類篩選與 archive 模式整合
 
 ### 可以碰的範圍
 
@@ -203,6 +219,44 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
      - 已確認五個 Yahoo symbol 都可讀取，其中萬海為 `2615.TW`、`00403A` 使用 `00403A.TW`。
      - 已驗證本地 API、頁面位置、`npm run lint`、`npm run build`。
 
+3. `[done]` 今日新聞 / 歷史新聞雙模式
+   - 主畫面預設只顯示「今日」（台灣時區）新聞。
+   - 左側 `NewsArchiveSidebar` 依日期分組，可點選歷史文章進入 archive 詳情視圖。
+   - 點標題「Siami Feed」回到今日；盤中會一併刷新股價。
+   - 相關檔案：`app/page.tsx`、`components/NewsArchiveSidebar.tsx`、`lib/dates/taipei.ts`。
+
+4. `[done]` `posts.detail` 簡短總結
+   - migration 新增 `posts.detail` text 欄位。
+   - Cron 寫入時產生「為何可能影響台股」的簡短總結，非 RSS 原文全文。
+   - `PostCard` 預設展示 `detail`；`content` 保留較長 insight。
+   - AI 回覆 prompt 已納入 `detail` 上下文。
+
+5. `[done]` Vercel Cron 授權修正
+   - `/api/cron/taiwan-stock-news` 與 `/api/cron/fetch-news` 接受 `x-vercel-cron: 1`。
+   - 手動觸發仍可用 `Authorization: Bearer <CRON_SECRET>` 或 `dryRun=1`（非 production）。
+
+6. `[todo]` 手機版歷史新聞 drawer（**今日最高優先，已 pending 約 33 天**）
+   - 現象：`NewsArchiveSidebar` 在手機上全寬堆疊於主 feed 上方，佔用大量垂直空間；`StockTicker` 固定五欄在小螢幕過於擁擠。
+   - 目標：`< lg` breakpoint 改為浮動按鈕 + drawer/sheet；`lg+` 維持現有左側 sticky；股價列改為可橫向捲動或 2×2 格線。
+   - DoD：手機與桌面皆通過第 5 節 RWD 要求，`npm run lint` / `npm run build` 通過。
+
+7. `[todo]` Cron 健康檢查
+   - 對 production 執行 `?dryRun=1`，確認 `candidates` 數量合理。
+   - 查 Vercel Cron 執行紀錄與 runtime error logs。
+   - 確認每日 08:55 後 feed 有新文章寫入。
+
+8. `[todo]` 新聞關鍵字分類
+   - 依標題/摘要關鍵字映射到既有 `categories`（半導體、航運、匯率等）。
+   - 預設不用 Gemini，避免 API 費用。
+
+9. `[todo]` AI 回覆品質
+   - 擴充 `commentReply.ts` 上下文：同日主題、來源 URL、相關股價。
+   - 回覆需標明資訊來源或不確定處。
+
+10. `[todo]` 最小單元測試
+    - 優先：`lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重邏輯。
+    - 不需先上 e2e 框架。
+
 ## 5. 完成定義（Definition of Done）
 
 每個功能或 bug 修復完成時，必須滿足：
@@ -275,6 +329,619 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - 依 PM 回饋微調股價卡片：
   - 移除卡片下方更新時間。
   - ETF（`0050`、`00403A`）主標題改顯示不含 `.TW` 的代號；名稱下方仍保留完整代號列。
+
+### 2026-05-24 至 2026-05-27
+
+- 主畫面預設今日新聞並加入左側歷史日期列表（`NewsArchiveSidebar` + `lib/dates/taipei.ts`）。
+- 新聞卡片預設顯示文章正文；後續改為 `posts.detail` 保存 RSS/來源內文。
+- migration `20260523120000_add_posts_detail.sql` 新增 `detail` 欄位。
+- 修正 Vercel Cron：允許 `x-vercel-cron` header 觸發，解決排程 401 問題。
+- `detail` 語意調整：改為每則新聞的簡短總結（影響台股的原因），由 `lib/news/taiwanStockNews.ts` 產生。
+- 最後功能 commit：`9489ff8`（2026-05-27）。此後至 2026-06-17 無新功能 commit。
+
+### 2026-06-13 至 2026-06-17（規格同步期）
+
+- 自動化 agent 多次執行規格書狀態盤點，確認進度約 55%。
+- 盤點結果：5/27 後程式碼凍結，但 `CURSOR_SPEC.md` 仍停在 5/21，與實際功能脫節。
+- 確認下一階段最高優先：**手機版 `NewsArchiveSidebar` drawer**（當時已 pending 約 4 天）。
+- 6/17：完成工作分支規格對齊規劃；待 6/18 正式寫入本文件並 commit。
+
+### 2026-06-18
+
+- 同步更新本規格書至實際程式狀態（進度 55%、檔案清單、待辦優先序）。
+- **今日建議執行順序**：
+  1. 實作手機版歷史新聞 drawer（解開最大 UX blocker）。
+  2. production Cron `dryRun=1` 健康檢查 + Vercel logs。
+  3. 關鍵字新聞分類（低成本、可立即改善篩選）。
+  4. AI 回覆上下文擴充。
+  5. 補最小單元測試。
+- 本日自動化任務：產出昨日回顧與今日計劃，並即時更新本 md。
+- **執行結果**：僅完成規格書同步（commit `948e28a` 於工作分支），**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`。
+
+### 2026-06-19
+
+- 自動化 cron 回顧 6/18 工作：規格書已對齊至 55% 進度，但 main 仍停在 `9489ff8`（2026-05-27）；6/18 規格 commit 尚未 merge。
+- 盤點現況：核心 feed（今日/歷史、Cron、股價、AI 留言）已就緒；最大缺口仍是**手機版 UX**與**新聞自動分類**。
+- **今日建議執行順序**（若開始實作，建議依序）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD** — 解開最大 UX blocker，預估改動 `NewsArchiveSidebar.tsx`、`app/page.tsx`、`StockTicker.tsx`。
+  2. **Cron 健康檢查** — production `/api/cron/taiwan-stock-news?dryRun=1` + Vercel Cron logs，確認 08:55 後有新文寫入。
+  3. **關鍵字新聞分類** — 在 `lib/news/taiwanStockNews.ts` 將既有 `KEYWORD_WEIGHTS` 映射到 `categories` slug，不需 Gemini。
+  4. **AI 回覆上下文** — `commentReply.ts` 納入同日主題、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`shouldRefreshQuotes`、新聞去重。
+- 本日自動化任務：產出 6/18 回顧、6/19 計劃，並即時更新本 md。
+- **執行結果**：僅完成規格書同步（commit `ad98858` 於工作分支 `cursor/bc-cd006d30-...`），**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`；main 分支仍停在 `9489ff8`。
+
+### 2026-06-20
+
+- 自動化 cron 回顧 6/19 工作：6/19 同樣僅完成規格書同步，連續兩日（6/18、6/19）無功能 commit；main 仍停在 `9489ff8`（2026-05-27）。
+- 盤點現況（與程式碼一致）：
+  - `NewsArchiveSidebar` 在小螢幕仍全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`，小螢幕五欄過於擁擠。
+  - `KEYWORD_WEIGHTS` 已用於新聞評分排序，但尚未映射到 `categories` 寫入。
+- **今日建議執行順序**（建議今日至少完成第 1 項，打破連續文件-only 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先）
+     - `< lg`：浮動「歷史新聞」按鈕 + 左側或底部 drawer/sheet；選文後關閉 drawer 並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar。
+     - 股價列：小螢幕改 `overflow-x-auto` 橫向捲動，或 `grid-cols-2` + 桌面維持五欄。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（今日 08:55 台灣時間 Cron 應已觸發）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（需 `CRON_SECRET` 或 Vercel 內部觸發）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs，確認 feed 有新文章。
+  3. **關鍵字新聞分類** — 將 `KEYWORD_WEIGHTS` 規則映射到既有 `categories` slug，Cron 寫入時帶正確 `category_id`。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/19 回顧、6/20 計劃，並即時更新本 md。
+- **執行結果**：僅完成規格書同步（commit `daee8c7` 於工作分支），**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`；main 分支仍停在 `9489ff8`；連續三日（6/18–6/20）僅文件更新。
+
+### 2026-06-21
+
+- 自動化 cron 回顧 6/20 工作：6/20 同樣僅完成規格書同步，連續三日無功能 commit；main 仍停在 `9489ff8`（2026-05-27）。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方。
+  - `StockTicker` 仍固定 `grid-cols-5`，320px 寬度下字級過小。
+  - 新聞 Cron 每日 08:55 應已觸發，但 production 健康檢查尚未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序，尚未寫入對應 `category_id`。
+- **今日建議執行順序**（強烈建議今日完成第 1 項，結束連續文件-only 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：右下角或標題列旁浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（本週六 08:55 Cron 應已觸發）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認今日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/20 回顧、6/21 計劃，並即時更新本 md。
+- **執行結果**：僅完成規格書同步（commit `c89b385` 於工作分支 `cursor/bc-4501c026-...`），**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`；main 分支仍停在 `9489ff8`；連續四日（6/18–6/21）僅文件更新。
+
+### 2026-06-22
+
+- 自動化 cron 回顧 6/21 工作：6/21 同樣僅完成規格書同步，連續四日無功能 commit；main 仍停在 `9489ff8`（2026-05-27）。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 週六、週日 08:55 Cron 應已各觸發一次，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續文件-only 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（週末兩次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認週末 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/21 回顧、6/22 計劃，並即時更新本 md。
+- **執行結果**：僅完成規格書同步（commit `9047b0d` 於工作分支 `cursor/bc-3fbcf360-...`），**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`；main 分支仍停在 `9489ff8`；連續五日（6/18–6/22）僅文件更新。
+
+### 2026-06-23
+
+- 自動化 cron 回顧 6/22 工作：6/22 同樣僅完成規格書同步，連續五日無功能 commit；main 仍停在 `9489ff8`（2026-05-27）。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 週末兩次與今日（週一）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續文件-only 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（週末 + 今日週一 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認週末與今日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/22 回顧、6/23 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-06-23（commit `c2b60e1` 於工作分支）；**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`；main 分支仍停在 `9489ff8`；連續六日（6/18–6/23）僅文件更新。
+
+### 2026-06-24
+
+- 自動化 cron 回顧 6/23 工作：6/23 同樣僅完成規格書同步，連續六日無功能 commit；main 仍停在 `9489ff8`（2026-05-27）。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 週末兩次、週一與今日（週二）08:55 Cron 應已各觸發一次，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續文件-only 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（週末 + 週一 + 今日週二 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/23 回顧、6/24 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-06-24（commit `1641925`、`1f308cb` 於工作分支）；**未開始任何功能程式碼**；手機版 drawer 仍為 `[todo]`；main 分支仍停在 `9489ff8`；連續七日（6/18–6/24）僅文件更新。
+
+### 2026-06-25
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：main 仍停在 `9489ff8`（2026-05-27）；工作分支規格書 commit 尚未 merge 至 main。
+- 今日（週三）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-06-26
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：待辦項目 #6–#10 全部仍為 `[todo]`。
+- 今日（週四）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-06-27
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：自 6/24 規格同步後已連續三日零 commit。
+- 今日（週五）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-06-28
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 自動化 cron 回顧 6/25–6/27：連續四日（含週末）無任何開發活動；main 仍停在 `9489ff8`（2026-05-27）。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方。
+  - `StockTicker` 仍固定 `grid-cols-5`，小螢幕五欄過於擁擠。
+  - 週三至週六共四次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序，尚未映射到 `category_id` 寫入。
+- **執行結果**：無（昨日無開發產出）。
+
+### 2026-06-29
+
+- 自動化 cron 回顧 6/28 工作：昨日同樣零 commit、零功能變更；自 6/24 規格同步後已連續五日無任何 repo 活動。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx`），小螢幕五欄過於擁擠。
+  - 6/25–6/28 共四次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 6/24 規格 commit）；本日已還原並補齊 6/25–6/29 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（6/25–6/28 四次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近四日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/28 回顧、6/29 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-06-29（含 6/25–6/28 空窗紀錄與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-06-30
+
+- 自動化 cron 回顧 6/29 工作：昨日完成規格書同步（commit `dad2d7e` 於工作分支），**未開始任何功能程式碼**；自 5/27 最後功能 commit `9489ff8` 起已逾一個月無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 6/25–6/29 共五次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作分支規格書 commit 尚未 merge 至 main；main 仍停在 `9489ff8`。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續文件-only / 零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（6/25–6/29 五次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近五日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 6/29 回顧、6/30 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-06-30（含 6/29 回顧與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-01
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：main 仍停在 `9489ff8`（2026-05-27）；6/30 規格書 commit `ab3e175` 僅在工作分支，尚未 merge 至 main。
+- 今日（週二）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-07-02
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：待辦項目 #6–#10 全部仍為 `[todo]`。
+- 今日（週三）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-07-03
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：自 6/30 規格同步後已連續三日零 commit。
+- 今日（週四）08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-07-04
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/1–7/3 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-07-05
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 自動化 cron 回顧 7/1–7/4：連續五日無任何開發活動；main 仍停在 `9489ff8`（2026-05-27）；自 5/27 最後功能 commit 起已逾五週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 6/30–7/4 共六次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+- **執行結果**：無（昨日無開發產出）。
+
+### 2026-07-06
+
+- 自動化 cron 回顧 7/5 工作：昨日同樣零 commit、零功能變更；自 6/30 規格同步後已連續六日無任何 repo 活動。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 6/30–7/5 共七次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 6/30 規格 commit）；本日已還原並補齊 7/1–7/6 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（6/30–7/5 七次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近七日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/5 回顧、7/6 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-06（含 7/1–7/5 空窗紀錄與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-07
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 盤點現況（與程式碼一致，未變）：
+  - main 仍停在 `9489ff8`（2026-05-27）；7/6 規格書 commit `412e8a3` 僅在工作分支 `cursor/bc-669133b9-...`，尚未 merge 至 main。
+  - 待辦項目 #6–#10 全部仍為 `[todo]`。
+  - 7/6–7/7 兩次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+- **執行結果**：無。
+
+### 2026-07-08
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 自動化 cron 回顧 7/7 工作：昨日同樣零 commit、零功能變更；自 7/6 規格同步後已連續兩日無任何 repo 活動。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/6–7/8 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+- **執行結果**：無（昨日無開發產出）。
+
+### 2026-07-09
+
+- 自動化 cron 回顧 7/8 工作：昨日同樣零 commit、零功能變更；自 5/27 最後功能 commit 起已逾六週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/6–7/8 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 7/6 規格 commit）；本日已還原並補齊 7/7–7/9 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/6–7/8 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/8 回顧、7/9 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-09（含 7/7–7/8 空窗紀錄與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-10
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 自動化 cron 回顧 7/9 工作：昨日完成規格書同步（commit `3ab31c6` 於工作分支 `cursor/bc-d32d3803-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit 起已逾六週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/9–7/10 兩次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/9 規格書 commit `3ab31c6` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`。
+- **執行結果**：無（昨日無開發產出）。
+
+### 2026-07-11
+
+- 自動化 cron 回顧 7/10 工作：昨日同樣零 commit、零功能變更；自 7/9 規格同步後已連續一日無任何 repo 活動。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/9–7/11 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 7/9 規格 commit）；本日已還原並補齊 7/10–7/11 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/9–7/11 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/10 回顧、7/11 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-11（含 7/10 空窗紀錄與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-12
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 自動化 cron 回顧 7/11 工作：昨日完成規格書同步（commit `138f1fd` 於工作分支 `cursor/bc-c999813a-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit 起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/11–7/12 兩次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/11 規格書 commit `138f1fd` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`。
+- **執行結果**：無（昨日無開發產出）。
+
+### 2026-07-13
+
+- 自動化 cron 回顧 7/12 工作：昨日同樣零 commit、零功能變更；自 7/11 規格同步後已連續一日無任何 repo 活動。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/11–7/13 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 7/11 規格 commit）；本日已還原並補齊 7/12–7/13 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 26 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/11–7/13 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/12 回顧、7/13 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-13（含 7/12 空窗紀錄與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-14
+
+- 自動化 cron 回顧 7/13 工作：昨日完成規格書同步（commit `fd476ff` 於工作分支 `cursor/bc-58c0aaf4-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit 起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/13–7/14 兩次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/13 規格書 commit `fd476ff` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`；本日工作區曾落後至 2026-05-21，已還原並補齊。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 27 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/13–7/14 兩次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近兩日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/13 回顧、7/14 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-14（含 7/13 回顧與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-15
+
+- **無自動化執行紀錄**：本日未觸發每日 cron 自動化 agent；全 repo 無任何 commit。
+- 自動化 cron 回顧 7/14 工作：昨日完成規格書同步（commit `279af76` 於工作分支 `cursor/bc-735ba710-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit 起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx:573` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/14–7/15 兩次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/14 規格書 commit `279af76` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`。
+- **執行結果**：無（昨日無開發產出）。
+
+### 2026-07-16
+
+- 自動化 cron 回顧 7/15 工作：昨日同樣零 commit、零功能變更；自 7/14 規格同步後已連續一日無任何 repo 活動。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx:573` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/14–7/16 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 7/14 規格 commit）；本日已還原並補齊 7/15–7/16 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 28 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/14–7/16 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/15 回顧、7/16 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-16（含 7/15 空窗紀錄與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-17
+
+- 自動化 cron 回顧 7/16 工作：昨日完成規格書同步（commit `4d92bd4` 於工作分支 `cursor/bc-51dfceb6-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit 起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx:573` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/15–7/17 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 工作區 `CURSOR_SPEC.md` 曾落後至 2026-05-21（未 merge 7/16 規格 commit）；本日已還原並補齊 7/17 日誌。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 29 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/15–7/17 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/16 回顧、7/17 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-17（含 7/16 回顧與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-18
+
+- 自動化 cron 回顧 7/17 工作：昨日完成規格書同步（commit `a46b697` 於工作分支 `cursor/bc-0b2effc2-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit（`9489ff8`）起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx:573` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/16–7/18 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/17 規格書 commit `a46b697` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`；本日工作區曾落後至 2026-05-21，已還原並補齊。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 30 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/16–7/18 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/17 回顧、7/18 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-18（含 7/17 回顧與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-19
+
+- 自動化 cron 回顧 7/18 工作：昨日完成規格書同步（commit `690a53e` 於工作分支 `cursor/bc-5d90db21-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit（`9489ff8`）起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/17–7/19 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/18 規格書 commit `690a53e` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`；本日工作區曾落後至 2026-05-21，已還原並補齊。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 31 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/17–7/19 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/18 回顧、7/19 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-19（含 7/18 回顧與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-20
+
+- 自動化 cron 回顧 7/19 工作：昨日完成規格書同步（commit `fbb5928` 於工作分支 `cursor/bc-cc07e08b-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit（`9489ff8`）起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/18–7/20 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/19 規格書 commit `fbb5928` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`；本日工作區曾落後至 2026-05-21，已還原並補齊。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 32 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/18–7/20 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/19 回顧、7/20 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-20（含 7/19 回顧與今日計劃）；功能實作待下一工作階段啟動。
+
+### 2026-07-21
+
+- 自動化 cron 回顧 7/20 工作：昨日完成規格書同步（commit `ff98f38` 於工作分支 `cursor/bc-cc07e08b-...`），**未開始任何功能程式碼**；自 5/27 最後功能 commit（`9489ff8`）起已逾七週無新功能 merge 至 main。
+- 盤點現況（與程式碼一致，未變）：
+  - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx:573` 僅 `lg:grid` 分欄，無 drawer）。
+  - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
+  - 7/19–7/21 共三次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證。
+  - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
+  - 7/20 規格書 commit `ff98f38` 僅在工作分支，尚未 merge 至 main；main 仍停在 `9489ff8`；本日工作區曾落後至 2026-05-21，已還原並補齊。
+- **今日建議執行順序**（強烈建議今日至少完成第 1 項，結束連續零功能 commit 循環）：
+  1. **手機版歷史新聞 drawer + `StockTicker` RWD**（最高優先，已 pending 約 33 天，預估 1 個工作階段可完成）
+     - `< lg`：標題列旁或右下角浮動「歷史新聞」按鈕；點擊開啟左側 drawer（或底部 sheet）；選文後關閉並捲動至主 feed。
+     - `lg+`：維持現有左側 sticky sidebar，不改桌面行為。
+     - `StockTicker`：`< sm` 改 `flex overflow-x-auto` 橫向捲動；`sm+` 維持五欄 grid。
+     - 同步修正 archive 說明文案（手機版 sidebar 不在左側）。
+     - 改動檔案：`components/NewsArchiveSidebar.tsx`、`app/page.tsx`、`components/StockTicker.tsx`。
+  2. **Cron 健康檢查**（7/19–7/21 三次 08:55 Cron 應已觸發，適合今日補驗）
+     - production `GET /api/cron/taiwan-stock-news?dryRun=1`（`Authorization: Bearer <CRON_SECRET>`）。
+     - 查 Vercel Cron 執行紀錄與 runtime logs；確認近三日 feed 有新文章。
+  3. **關鍵字新聞分類** — `lib/news/taiwanStockNews.ts` 將 `KEYWORD_WEIGHTS` 映射到既有 `categories` slug。
+  4. **AI 回覆上下文** — `lib/ai/commentReply.ts` 納入同日主題、`detail`、來源 URL、相關股價。
+  5. **最小單元測試** — `lib/dates/taipei.ts`、`lib/market/shouldRefreshQuotes.ts`、新聞去重。
+- 本日自動化任務：產出 7/20 回顧、7/21 計劃，並即時更新本 md。
+- **執行結果**：完成規格書同步至 2026-07-21（含 7/20 回顧與今日計劃）；功能實作待下一工作階段啟動。
 
 ### 2026-05-19 至 2026-05-20 既有進度摘要
 
