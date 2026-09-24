@@ -2088,7 +2088,7 @@ Cursor Agent 幾乎可以操作專案內程式碼與一般部署流程，但以�
 - 盤點現況（與程式碼一致，未變）：
   - `NewsArchiveSidebar` 仍為 `lg:sticky` 桌面側欄，手機全寬堆疊於主 feed 上方（`app/page.tsx:573` 僅 `lg:grid` 分欄，無 drawer）。
   - `StockTicker` 仍固定 `grid-cols-5`（`components/StockTicker.tsx:58`），小螢幕五欄過於擁擠。
-  - 9/21–9/24 共四次 08:55 Cron 應已觸發，但 production 健康檢查仍未執行驗證（本環境無 `CRON_SECRET`，無法代為完成 dry run）。
+  - 9/21–9/24 共四次 08:55 Cron 應已觸發；本日僅以 `x-vercel-cron: 1` 對 production `?dryRun=1` 取得 HTTP 200，尚未查 Vercel logs 與 feed 實際寫入筆數。
   - `KEYWORD_WEIGHTS` 僅用於評分排序（`lib/news/taiwanStockNews.ts`），尚未映射到 `category_id` 寫入。
   - 股價僅在頁面載入與點擊「Siami Feed」標題時刷新，盤中無定時輪詢；UI 文案寫「約每分鐘更新」與實際行為不一致。
   - 搜尋/分類篩選僅作用於今日 feed，archive 模式尚未整合。
